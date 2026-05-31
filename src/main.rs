@@ -3,12 +3,12 @@ mod templates;
 use askama::Template;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::middleware;
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Redirect};
 use axum::{Router, http::StatusCode, response::Html, routing::get};
 use serde::Deserialize;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use templates::{IndexTemplate, PlaylistTemplate};
 use tokio::sync::RwLock;
-use templates::{IndexTemplate, WatchTemplate};
 use tower_http::services::ServeDir;
 
 #[derive(Deserialize)]
@@ -39,7 +39,6 @@ fn default_sort_dir() -> SortDirection {
     SortDirection::Asc
 }
 
-
 #[derive(Deserialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 enum SortField {
@@ -53,7 +52,7 @@ enum SortField {
 #[serde(rename_all = "lowercase")]
 enum SortDirection {
     Asc,
-    Desc
+    Desc,
 }
 
 impl SortDirection {
@@ -120,14 +119,14 @@ async fn main() {
 
     let path_cl = PathBuf::from(&media_path);
     let cache_cl = Arc::clone(&cache);
-    tokio::spawn( async move {
+    tokio::spawn(async move {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
         loop {
             interval.tick().await;
             let fresh = media::build_index(&path_cl);
             *cache_cl.write().await = fresh;
         }
-    } );
+    });
 
     // Create application state
     let state = AppState {
@@ -139,7 +138,8 @@ async fn main() {
     // Build our application with routes
     let app = Router::new()
         .route("/", get(index_handler))
-        .route("/v/{filename}", get(watch_handler))
+        .route("/playlist", get(playlist_handler))
+        .route("/v/{filename}", get(watch_redirect))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -179,21 +179,81 @@ struct WatchParams {
     dir: SortDirection,
 }
 
-async fn watch_handler(
+// Redirect /v/{filename}?sort=...&dir=... to /playlist?video={filename}&sort=...&dir=...
+async fn watch_redirect(
     AxumPath(filename): AxumPath<String>,
-    State(state): State<AppState>,
     Query(params): Query<WatchParams>,
+) -> Redirect {
+    let sort = params.sort.as_str();
+    let dir = params.dir.as_str();
+    Redirect::to(&format!(
+        "/playlist?video={}&sort={}&dir={}",
+        filename, sort, dir
+    ))
+}
+
+#[derive(Deserialize)]
+struct PlaylistParams {
+    #[serde(default)]
+    video: String,
+
+    #[serde(default)]
+    sort: SortField,
+
+    #[serde(default = "default_sort_dir")]
+    dir: SortDirection,
+
+    #[serde(default)]
+    query: String,
+}
+
+async fn playlist_handler(
+    State(state): State<AppState>,
+    Query(params): Query<PlaylistParams>,
 ) -> Result<Html<String>, (StatusCode, String)> {
     let files = state.cache.read().await;
-    let video = match files.iter().find(|f| f.name == filename) {
-        Some(f) => f.clone(),
-        None => return Err((StatusCode::NOT_FOUND, "File not found".to_string())),
-    };
-    let (prev, next) = media::find_neighbors(&files, &filename, params.sort, params.dir);
-    WatchTemplate { video, prev, next, sort: params.sort, dir: params.dir }
-        .render()
-        .map(Html)
-        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
+
+    let (playlist, current_idx) = media::build_playlist(
+        &files,
+        &params.query,
+        &params.video,
+        params.sort,
+        params.dir,
+    );
+
+    let video = playlist
+        .get(current_idx)
+        .map(|item| media::MediaFile {
+            name: item.n.clone(),
+            path: item.p.clone(),
+            size: item.s,
+            modified: None,
+            created: None,
+            extension: item.e.clone(),
+        })
+        .unwrap_or_else(|| media::MediaFile {
+            name: "Unknown".into(),
+            path: "".into(),
+            size: 0,
+            modified: None,
+            created: None,
+            extension: "mp4".into(),
+        });
+
+    let playlist_json = serde_json::to_string(&playlist)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    PlaylistTemplate {
+        playlist_json,
+        current_idx,
+        video,
+        sort: params.sort,
+        dir: params.dir,
+        search: params.query,
+    }
+    .render()
+    .map(Html)
+    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
 }
 
 async fn auth_middleware(

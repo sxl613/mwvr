@@ -1,7 +1,8 @@
+use std::cmp::Reverse;
 use std::path::Path;
 use std::time::SystemTime;
-use std::cmp::Reverse;
 
+use serde::Serialize;
 use walkdir::WalkDir;
 
 use crate::{ListParams, SortDirection, SortField};
@@ -116,9 +117,35 @@ pub fn list_media_files(all_files: &[MediaFile], params: &ListParams) -> Paginat
         files: files[start..end].to_vec(),
     }
 }
-pub fn find_neighbors(all_files: &[MediaFile], current: &str, sort: SortField, dir: SortDirection) -> (Option<String>, Option<String>) {
-    // a linear scan, I know...
-    let mut files: Vec<&MediaFile> = all_files.iter().collect();
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaylistItem {
+    pub n: String, // name
+    pub p: String, // path
+    pub e: String, // extension
+    pub s: u64,    // size
+}
+
+pub fn build_playlist(
+    all_files: &[MediaFile],
+    search: &str,
+    current: &str,
+    sort: SortField,
+    dir: SortDirection,
+) -> (Vec<PlaylistItem>, usize) {
+    let q = if search.is_empty() {
+        None
+    } else {
+        Some(search.to_lowercase())
+    };
+
+    let mut files: Vec<&MediaFile> = all_files
+        .iter()
+        .filter(|f| {
+            q.as_deref()
+                .map_or(true, |q| f.name.to_lowercase().contains(q))
+        })
+        .collect();
+
     match sort {
         SortField::Name => files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase())),
         SortField::Size => files.sort_by_key(|f| f.size),
@@ -128,15 +155,20 @@ pub fn find_neighbors(all_files: &[MediaFile], current: &str, sort: SortField, d
     if matches!(dir, SortDirection::Desc) {
         files.reverse();
     }
-    for (idx, file) in files.iter().enumerate() {
-        if file.name == current {
-            return (
-                idx.checked_sub(1).and_then(|pi| files.get(pi)).map(|f| f.name.clone()),
-                files.get(idx + 1).map(|f| f.name.clone()),
-            );
-        }
-    }
-    (None, None)
+
+    let current_idx = files.iter().position(|f| f.name == current).unwrap_or(0);
+
+    let items: Vec<PlaylistItem> = files
+        .iter()
+        .map(|f| PlaylistItem {
+            n: f.name.clone(),
+            p: f.path.clone(),
+            e: f.extension.clone(),
+            s: f.size,
+        })
+        .collect();
+
+    (items, current_idx)
 }
 
 pub fn format_size(bytes: &u64) -> String {

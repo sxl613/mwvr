@@ -323,7 +323,7 @@
                             <span class="extension-badge">{{ file.extension }}</span>
                             {{ crate::media::format_size(file.size) }}
                         </div>
-                        <a class="watch-link" href="/v/{{ file.name }}?sort={{ query.sort.as_str() }}&dir={{ query.dir.as_str() }}">Watch</a>
+                        <a class="watch-link" href="/playlist?video={{ file.name }}&sort={{ query.sort.as_str() }}&dir={{ query.dir.as_str() }}">Watch</a>
                     </div>
                 </div>
                 {% endfor %}
