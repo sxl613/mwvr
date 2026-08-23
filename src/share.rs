@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use askama::Template;
 use axum::body::Body;
@@ -69,6 +69,44 @@ fn now_unix() -> u64 {
 
 fn expired(expires_at: Option<u64>) -> bool {
     expires_at.is_some_and(|t| now_unix() >= t)
+}
+
+pub fn thumb_name(uuid: &str) -> String {
+    format!("{}.jpg", uuid)
+}
+
+pub async fn remove_thumbnail(thumb_dir: &Path, uuid: &str) {
+    let _ = tokio::fs::remove_file(thumb_dir.join(thumb_name(uuid))).await;
+}
+
+async fn generate_thumbnail(video: &Path, thumb: &Path) -> std::io::Result<()> {
+    // Try a frame at 1s first; fall back to the first frame for very short clips.
+    for ss in ["1", "0"] {
+        let status = tokio::process::Command::new("ffmpeg")
+            .arg("-y")
+            .arg("-loglevel")
+            .arg("error")
+            .arg("-ss")
+            .arg(ss)
+            .arg("-i")
+            .arg(video)
+            .arg("-frames:v")
+            .arg("1")
+            .arg("-vf")
+            .arg("scale='min(1280,iw)':-2")
+            .arg("-q:v")
+            .arg("3")
+            .arg(thumb)
+            .status()
+            .await?;
+
+        if status.success()
+            && tokio::fs::metadata(thumb).await.is_ok_and(|m| m.len() > 0)
+        {
+            return Ok(());
+        }
+    }
+    Err(std::io::Error::other("ffmpeg failed to produce a thumbnail"))
 }
 
 #[derive(Clone)]
@@ -165,13 +203,21 @@ impl ShareStore {
         Ok(n > 0)
     }
 
-    pub async fn purge_expired(&self) -> Result<usize, rusqlite::Error> {
+    pub async fn purge_expired(&self) -> Result<Vec<String>, rusqlite::Error> {
         let conn = self.conn.lock().await;
-        let n = conn.execute(
+        let now = now_unix() as i64;
+        let uuids: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT uuid FROM shares WHERE expires_at IS NOT NULL AND expires_at < ?1",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![now], |row| row.get::<_, String>(0))?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+        conn.execute(
             "DELETE FROM shares WHERE expires_at IS NOT NULL AND expires_at < ?1",
-            rusqlite::params![now_unix() as i64],
+            rusqlite::params![now],
         )?;
-        Ok(n)
+        Ok(uuids)
     }
 }
 
@@ -220,6 +266,21 @@ pub async fn create_share(
         .await
         .map_err(ApiError::internal)?;
 
+    // Pre-generate the thumbnail in the background so link previews (WhatsApp,
+    // Telegram, etc.) don't race against on-demand generation.
+    let thumb_dir = state.thumb_dir.clone();
+    let uuid = share.uuid.clone();
+    tokio::spawn(async move {
+        let thumb = thumb_dir.join(thumb_name(&uuid));
+        let already_cached = tokio::fs::metadata(&thumb)
+            .await
+            .map(|m| m.len() > 0)
+            .unwrap_or(false);
+        if !already_cached {
+            let _ = generate_thumbnail(&abs, &thumb).await;
+        }
+    });
+
     Ok(Json(share.view(&state.public_base_url)))
 }
 
@@ -229,6 +290,7 @@ pub async fn list_shares(State(state): State<AppState>) -> Result<Json<Vec<Share
     for share in state.share_store.list().await.map_err(ApiError::internal)? {
         if expired(share.expires_at) {
             let _ = state.share_store.delete(&share.uuid).await;
+            remove_thumbnail(&state.thumb_dir, &share.uuid).await;
             continue;
         }
         views.push(share.view(&state.public_base_url));
@@ -248,6 +310,7 @@ pub async fn delete_share(
         .map_err(ApiError::internal)?;
 
     if deleted {
+        remove_thumbnail(&state.thumb_dir, &uuid).await;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError(StatusCode::NOT_FOUND, "share not found".into()))
@@ -260,6 +323,7 @@ pub async fn shares_page(State(state): State<AppState>) -> Result<Html<String>, 
     for share in state.share_store.list().await.map_err(ApiError::internal)? {
         if expired(share.expires_at) {
             let _ = state.share_store.delete(&share.uuid).await;
+            remove_thumbnail(&state.thumb_dir, &share.uuid).await;
             continue;
         }
         views.push(share.view(&state.public_base_url));
@@ -287,6 +351,7 @@ pub async fn share_page(
 
     if expired(share.expires_at) {
         let _ = state.share_store.delete(&uuid).await;
+        remove_thumbnail(&state.thumb_dir, &uuid).await;
         return Err(ApiError(StatusCode::NOT_FOUND, "share expired".into()));
     }
 
@@ -296,10 +361,16 @@ pub async fn share_page(
         .map(|(_, ext)| ext.to_lowercase())
         .unwrap_or_else(|| "mp4".into());
 
+    let page_url = share_url(&state.public_base_url, &share.uuid);
+    let thumbnail_url = format!("{}/thumbnail", page_url);
+
     let html = ShareTemplate {
         uuid: share.uuid,
         name: share.name,
-        extension,
+        extension: extension.clone(),
+        page_url,
+        thumbnail_url,
+        mime: format!("video/{}", extension),
     }
     .render()
     .map_err(ApiError::internal)?;
@@ -325,6 +396,7 @@ pub async fn share_stream(
         Ok(Some(share)) if !expired(share.expires_at) => share,
         Ok(Some(share)) => {
             let _ = state.share_store.delete(&share.uuid).await;
+            remove_thumbnail(&state.thumb_dir, &share.uuid).await;
             return (StatusCode::NOT_FOUND, "share expired".to_string()).into_response();
         }
         Ok(None) => {
@@ -346,6 +418,65 @@ pub async fn share_stream(
             response
                 .headers_mut()
                 .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            response.map(Body::new)
+        }
+        Err(never) => match never {},
+    }
+}
+
+pub async fn share_thumbnail(
+    AxumPath(uuid): AxumPath<String>,
+    State(state): State<AppState>,
+    request: Request<Body>,
+) -> Response {
+    let share = match state.share_store.get(&uuid).await {
+        Ok(Some(share)) if !expired(share.expires_at) => share,
+        Ok(Some(share)) => {
+            let _ = state.share_store.delete(&share.uuid).await;
+            remove_thumbnail(&state.thumb_dir, &share.uuid).await;
+            return (StatusCode::NOT_FOUND, "share expired".to_string()).into_response();
+        }
+        Ok(None) => {
+            return (StatusCode::NOT_FOUND, "share not found".to_string()).into_response();
+        }
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+        }
+    };
+
+    let video = match resolve_media_path(&state.media_root, &share.rel) {
+        Ok(p) => p,
+        Err(e) => return (StatusCode::NOT_FOUND, e.to_string()).into_response(),
+    };
+
+    let thumb = state.thumb_dir.join(thumb_name(&share.uuid));
+
+    let needs_generate = match tokio::fs::metadata(&thumb).await {
+        Ok(meta) => meta.len() == 0,
+        Err(_) => true,
+    };
+
+    if needs_generate {
+        match tokio::time::timeout(
+            Duration::from_secs(15),
+            generate_thumbnail(&video, &thumb),
+        )
+        .await
+        {
+            Ok(Ok(())) => {}
+            _ => {
+                return (StatusCode::NOT_FOUND, "thumbnail unavailable".to_string())
+                    .into_response();
+            }
+        }
+    }
+
+    match ServeFile::new(thumb).oneshot(request).await {
+        Ok(mut response) => {
+            response.headers_mut().insert(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("public, max-age=86400"),
+            );
             response.map(Body::new)
         }
         Err(never) => match never {},

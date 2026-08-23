@@ -12,7 +12,10 @@ use axum::{
     routing::{delete, get},
 };
 use serde::Deserialize;
-use share::{create_share, delete_share, list_shares, share_page, share_stream, shares_page};
+use share::{
+    create_share, delete_share, list_shares, share_page, share_stream, share_thumbnail,
+    shares_page,
+};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use templates::{IndexTemplate, PlaylistTemplate};
 use tokio::sync::RwLock;
@@ -108,6 +111,7 @@ struct AppState {
     share_store: share::ShareStore,
     media_root: PathBuf,
     public_base_url: String,
+    thumb_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -127,6 +131,9 @@ async fn main() {
     let public_base_url = std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| {
         format!("http://{}:{}", addr, port)
     });
+    let thumb_dir = PathBuf::from(
+        std::env::var("THUMB_DIR").unwrap_or_else(|_| "./thumbs".to_string()),
+    );
 
     // Build initial file index
     let index = media::build_index(&PathBuf::from(&media_path));
@@ -148,13 +155,23 @@ async fn main() {
         .await
         .expect("Failed to open share database");
 
-    // Purge expired share links periodically
+    tokio::fs::create_dir_all(&thumb_dir)
+        .await
+        .expect("Failed to create thumbnail directory");
+
+    // Purge expired share links (and their thumbnails) periodically
     let purge_store = share_store.clone();
+    let purge_thumb_dir = thumb_dir.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300));
         loop {
             interval.tick().await;
-            let _ = purge_store.purge_expired().await;
+            if let Ok(purged) = purge_store.purge_expired().await {
+                for uuid in purged {
+                    let _ = tokio::fs::remove_file(purge_thumb_dir.join(share::thumb_name(&uuid)))
+                        .await;
+                }
+            }
         }
     });
 
@@ -166,6 +183,7 @@ async fn main() {
         share_store,
         media_root: PathBuf::from(&media_path),
         public_base_url,
+        thumb_dir,
     };
 
     // Private routes: everything behind the auth middleware (and Cloudflare Access).
@@ -185,7 +203,8 @@ async fn main() {
     // Public share surface: UUID-gated, deliberately outside the auth middleware.
     let public = Router::new()
         .route("/share/{uuid}", get(share_page))
-        .route("/share/{uuid}/stream", get(share_stream));
+        .route("/share/{uuid}/stream", get(share_stream))
+        .route("/share/{uuid}/thumbnail", get(share_thumbnail));
 
     let app = private.merge(public).with_state(state);
 

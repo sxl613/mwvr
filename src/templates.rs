@@ -27,6 +27,9 @@ pub struct ShareTemplate {
     pub uuid: String,
     pub name: String,
     pub extension: String,
+    pub page_url: String,
+    pub thumbnail_url: String,
+    pub mime: String,
 }
 
 #[derive(Template)]

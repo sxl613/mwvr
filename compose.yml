@@ -18,6 +18,8 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
       # SQLite backend (recommended).
       SHARE_DB_PATH: /data/shares.db
+      # Generated share thumbnails (same persistent volume as the DB).
+      THUMB_DIR: /data/thumbs
     volumes:
       - ${MEDIA_HOST_PATH:?set MEDIA_HOST_PATH in .env}:/webm:ro   # e.g. /video
       - canis-data:/data

@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="referrer" content="no-referrer" />
+  <meta property="og:title" content="{{ name }}" />
+  <meta property="og:description" content="Shared via mwvr" />
+  <meta property="og:type" content="video.other" />
+  <meta property="og:url" content="{{ page_url }}" />
+  <meta property="og:image" content="{{ thumbnail_url }}" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:video" content="{{ page_url }}/stream" />
+  <meta property="og:video:type" content="{{ mime }}" />
+  <meta property="og:video:secure_url" content="{{ page_url }}/stream" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{{ name }}" />
+  <meta name="twitter:image" content="{{ thumbnail_url }}" />
   <title>{{ name }}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
   {% include "theme_head.html" %}
