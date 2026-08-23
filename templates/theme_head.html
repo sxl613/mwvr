@@ -1,0 +1,14 @@
+<script>
+  (function () {
+    // Apply the saved theme before the stylesheet is parsed (no flash).
+    try {
+      var t = localStorage.getItem('mwvr_theme');
+      if (t === 'light' || t === 'dark') {
+        document.documentElement.dataset.theme = t;
+      }
+    } catch (e) {}
+  })();
+</script>
+<style>
+{% include "style.css" %}
+</style>

@@ -5,112 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
     <title>mwvr / shares</title>
-    <style>
-        :root {
-            --bg: #111;
-            --bg-hover: #181818;
-            --color: #aaa;
-            --color-h1: #ccc;
-            --color-name: #ccc;
-            --color-muted: #555;
-            --color-label: #666;
-            --border: #222;
-            --border-input: #333;
-            --border-hover: #555;
-        }
-        @media (prefers-color-scheme: light) {
-            :root {
-                --bg: #f5f5f5;
-                --bg-hover: #ebebeb;
-                --color: #555;
-                --color-h1: #222;
-                --color-name: #222;
-                --color-muted: #999;
-                --color-label: #888;
-                --border: #ddd;
-                --border-input: #ccc;
-                --border-hover: #999;
-            }
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: "SF Mono", "Cascadia Mono", "Consolas", monospace;
-            background: var(--bg);
-            color: var(--color);
-            padding: 2rem;
-            line-height: 1.5;
-        }
-        .container { max-width: 900px; margin: 0 auto; }
-        h1 {
-            color: var(--color-h1);
-            font-size: 1rem;
-            font-weight: normal;
-            letter-spacing: 0.1em;
-            text-transform: lowercase;
-            margin-bottom: 0.5rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 1px solid var(--border);
-        }
-        h1 a { color: inherit; text-decoration: none; }
-        .back-link {
-            display: inline-block;
-            margin: 1rem 0 1.5rem;
-            color: var(--color-label);
-            text-decoration: none;
-            font-size: 0.7rem;
-            border: 1px solid var(--border-input);
-            padding: 0.25rem 0.6rem;
-        }
-        .back-link:hover { color: var(--color); border-color: var(--border-hover); }
-        .share-row {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.7rem 0;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.8rem;
-            flex-wrap: wrap;
-        }
-        .share-row:hover { background: var(--bg-hover); }
-        .share-name {
-            color: var(--color-name);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            min-width: 120px;
-            max-width: 200px;
-        }
-        .share-url {
-            flex: 1;
-            min-width: 200px;
-            color: var(--color-muted);
-            font-size: 0.7rem;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .share-meta {
-            color: var(--color-label);
-            font-size: 0.7rem;
-            white-space: nowrap;
-        }
-        button {
-            background: transparent;
-            border: 1px solid var(--border-input);
-            color: var(--color-label);
-            font-family: inherit;
-            font-size: 0.7rem;
-            padding: 0.25rem 0.6rem;
-            cursor: pointer;
-        }
-        button:hover { color: var(--color); border-color: var(--border-hover); }
-        button.revoke:hover { color: #c66; border-color: #c66; }
-        p { color: var(--color-muted); font-size: 0.85rem; margin-top: 1rem; }
-    </style>
+    {% include "theme_head.html" %}
 </head>
-<body>
+<body class="page-shares">
     <div class="container">
-        <h1><a href="/">mwvr</a> / shares</h1>
+        <h1 class="site-head">
+            <span><a href="/">mwvr</a> / shares</span>
+            {% include "theme_select.html" %}
+        </h1>
         <a class="back-link" href="/">&larr; list</a>
         <div id="share-list"></div>
     </div>
@@ -186,5 +88,6 @@
             });
         })();
     </script>
+{% include "theme.js" %}
 </body>
 </html>

@@ -6,232 +6,16 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text
                            y='.9em' font-size='90'>🐕</text></svg>">
     <title>mwvr</title>
-    <style>
-        :root {
-            --bg:           #111;
-            --bg-card:      #111;
-            --bg-hover:     #181818;
-            --bg-video:     #0a0a0a;
-            --bg-grid:      #222;
-            --color:        #aaa;
-            --color-h1:     #ccc;
-            --color-name:   #ccc;
-            --color-muted:  #555;
-            --color-label:  #666;
-            --color-link:   #777;
-            --color-link-h: #bbb;
-            --border:       #222;
-            --border-input: #333;
-            --border-hover: #555;
-        }
-
-        @media (prefers-color-scheme: light) {
-            :root {
-                --bg:           #f5f5f5;
-                --bg-card:      #f5f5f5;
-                --bg-hover:     #ebebeb;
-                --bg-video:     #e0e0e0;
-                --bg-grid:      #ddd;
-                --color:        #555;
-                --color-h1:     #222;
-                --color-name:   #222;
-                --color-muted:  #999;
-                --color-label:  #888;
-                --color-link:   #666;
-                --color-link-h: #333;
-                --border:       #ddd;
-                --border-input: #ccc;
-                --border-hover: #999;
-            }
-        }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-
-        body {
-            font-family: "SF Mono", "Cascadia Mono", "Consolas", monospace;
-            background: var(--bg);
-            color: var(--color);
-            padding: 2rem;
-            line-height: 1.5;
-        }
-
-        .container { max-width: 1000px; margin: 0 auto; }
-
-        h1 {
-            color: var(--color-h1);
-            font-size: 1rem;
-            font-weight: normal;
-            letter-spacing: 0.1em;
-            text-transform: lowercase;
-            margin-bottom: 2rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 1px solid var(--border);
-        }
-        h1 a {
-            color: inherit;
-            text-decoration: none;
-        }
-        h1.site-head { display: flex; align-items: baseline; justify-content: space-between; }
-        .site-nav {
-            font-size: 0.7rem;
-            letter-spacing: 0.05em;
-            color: var(--color-muted);
-            text-decoration: none;
-        }
-        .site-nav:hover { color: var(--color); }
-
-        /* controls */
-        .controls {
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-            font-size: 0.8rem;
-        }
-        .controls label {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            color: var(--color-label);
-        }
-        .controls input,
-        .controls select {
-            padding: 0.3rem 0.5rem;
-            background: transparent;
-            border: 1px solid var(--border-input);
-            color: var(--color);
-            font-family: inherit;
-            font-size: 0.8rem;
-        }
-        .controls input:focus,
-        .controls select:focus {
-            outline: none;
-            border-color: var(--border-hover);
-        }
-        .controls input[type="number"] { width: 4rem; }
-        .controls select { cursor: pointer; }
-        .controls button {
-            padding: 0.3rem 1rem;
-            background: transparent;
-            border: 1px solid var(--border-input);
-            color: var(--color-label);
-            font-family: inherit;
-            font-size: 0.8rem;
-            cursor: pointer;
-            margin-left: auto;
-        }
-        .controls button:hover {
-            color: var(--color);
-            border-color: var(--border-hover);
-        }
-
-        /* grid */
-        .media-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 1px;
-            background: var(--bg-grid);
-            border: 1px solid var(--bg-grid);
-        }
-
-        .media-card {
-            background: var(--bg-card);
-            overflow: hidden;
-        }
-        .media-card:hover { background: var(--bg-hover); }
-        .media-card video {
-            width: 100%;
-            height: 180px;
-            object-fit: contain;
-            background: var(--bg-video);
-            display: block;
-        }
-        .media-info { padding: 0.75rem; }
-        .media-name {
-            font-size: 0.8rem;
-            word-break: break-word;
-            color: var(--color-name);
-        }
-        .media-meta {
-            font-size: 0.7rem;
-            color: var(--color-muted);
-            margin-top: 0.25rem;
-        }
-        .watch-link {
-            display: inline-block;
-            margin-top: 0.6rem;
-            padding: 0.25rem 0.5rem;
-            border: 1px solid var(--border-input);
-            text-decoration: none;
-            color: var(--color-link);
-            font-size: 0.68rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-        }
-        .watch-link:hover {
-            color: var(--color-link-h);
-            border-color: var(--border-hover);
-        }
-        .watch-link:active { transform: translateY(1px); }
-        .extension-badge {
-            display: inline-block;
-            padding: 1px 5px;
-            border: 1px solid var(--border-input);
-            font-size: 0.65rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-right: 0.5rem;
-            color: var(--color-muted);
-        }
-
-        p { color: var(--color-muted); font-size: 0.85rem; }
-
-        .pagination {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 2rem;
-            font-size: 0.8rem;
-            color: var(--color-muted);
-        }
-        .pagination a {
-            color: var(--color-link);
-            text-decoration: none;
-            border: 1px solid var(--border-input);
-            padding: 0.25rem 0.75rem;
-        }
-        .pagination a:hover {
-            color: var(--color-link-h);
-            border-color: var(--border-hover);
-        }
-        .pagination-disabled {
-            color: var(--border-input);
-            border: 1px solid var(--border);
-            padding: 0.25rem 0.75rem;
-        }
-
-        @media (max-width: 700px) {
-            body { padding: 1rem; }
-            .controls {
-                flex-wrap: wrap;
-                align-items: flex-start;
-                gap: 0.75rem;
-            }
-            .controls button { margin-left: 0; }
-            .media-grid {
-                grid-template-columns: 1fr;
-            }
-            .media-card video {
-                height: 220px;
-            }
-        }
-    </style>
+    {% include "theme_head.html" %}
 </head>
-<body>
+<body class="page-index">
     <div class="container">
         <h1 class="site-head">
             <a href="/">mwvr</a>
-            <a class="site-nav" href="/shares">shares</a>
+            <span class="site-head-right">
+                <a class="site-nav" href="/shares">shares</a>
+                {% include "theme_select.html" %}
+            </span>
         </h1>
 
       <form method="GET" action="/" class="controls">
@@ -369,6 +153,7 @@
             }
         });
     </script>
+    {% include "theme.js" %}
     {% include "share_ui.html" %}
 </body>
 </html>
