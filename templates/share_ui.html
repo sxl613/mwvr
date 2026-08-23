@@ -1,0 +1,172 @@
+<style>
+  button.watch-link,
+  button.back-link {
+    background: transparent;
+    font-family: inherit;
+    cursor: pointer;
+    appearance: none;
+  }
+  .share-dialog {
+    background: var(--bg-card, #111);
+    color: var(--color, #aaa);
+    border: 1px solid var(--border-input, #333);
+    padding: 0;
+    max-width: 420px;
+    width: calc(100vw - 2rem);
+    font-family: inherit;
+  }
+  .share-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+  }
+  .share-dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border, #222);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-label, #666);
+  }
+  .share-dialog-head button {
+    background: transparent;
+    border: none;
+    color: var(--color-label, #666);
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  .share-dialog-head button:hover { color: var(--color, #aaa); }
+  .share-body {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .share-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--color-label, #666);
+  }
+  .share-label select {
+    background: transparent;
+    border: 1px solid var(--border-input, #333);
+    color: var(--color, #aaa);
+    font-family: inherit;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+    margin-left: auto;
+  }
+  .share-body .watch-link { text-align: center; }
+  .share-result {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .share-result input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 1px solid var(--border-input, #333);
+    color: var(--color, #aaa);
+    font-family: inherit;
+    font-size: 0.75rem;
+    padding: 0.35rem 0.5rem;
+  }
+  .share-result input:focus { outline: none; border-color: var(--border-hover, #555); }
+  .share-error {
+    font-size: 0.75rem;
+    color: #c66;
+    word-break: break-word;
+  }
+</style>
+
+<dialog class="share-dialog" id="share-dialog">
+  <form method="dialog" class="share-dialog-head">
+    <span>share</span>
+    <button value="cancel" aria-label="close">&times;</button>
+  </form>
+  <div class="share-body">
+    <label class="share-label">
+      expiry
+      <select id="share-expiry">
+        <option value="">never</option>
+        <option value="3600">1 hour</option>
+        <option value="86400" selected>1 day</option>
+        <option value="604800">7 days</option>
+        <option value="2592000">30 days</option>
+      </select>
+    </label>
+    <button class="watch-link" id="share-create" type="button">create link</button>
+    <div class="share-result" id="share-result" hidden>
+      <input id="share-url" type="text" readonly />
+      <button class="watch-link" id="share-copy" type="button">copy</button>
+    </div>
+    <div class="share-error" id="share-error" hidden></div>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  const dialog = document.getElementById('share-dialog');
+  const expiry = document.getElementById('share-expiry');
+  const createBtn = document.getElementById('share-create');
+  const result = document.getElementById('share-result');
+  const urlInput = document.getElementById('share-url');
+  const copyBtn = document.getElementById('share-copy');
+  const errEl = document.getElementById('share-error');
+  let currentRel = null;
+
+  function openShareDialog(rel) {
+    if (!rel) return;
+    currentRel = rel;
+    result.hidden = true;
+    errEl.hidden = true;
+    urlInput.value = '';
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  }
+
+  document.querySelectorAll('[data-share-rel]').forEach(el => {
+    el.addEventListener('click', () => openShareDialog(el.dataset.shareRel));
+  });
+
+  // Exposed for the playlist page, which tracks the currently playing item.
+  window.__mwvrShare = openShareDialog;
+
+  createBtn.addEventListener('click', async () => {
+    if (!currentRel) return;
+    const expiresIn = expiry.value ? parseInt(expiry.value, 10) : null;
+    try {
+      const res = await fetch('/api/shares', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rel: currentRel, expires_in: expiresIn }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      urlInput.value = data.url;
+      result.hidden = false;
+      errEl.hidden = true;
+    } catch (e) {
+      errEl.textContent = 'failed: ' + e.message;
+      errEl.hidden = false;
+    }
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    if (!urlInput.value) return;
+    try {
+      await navigator.clipboard.writeText(urlInput.value);
+      copyBtn.textContent = 'copied';
+      setTimeout(() => { copyBtn.textContent = 'copy'; }, 1500);
+    } catch (e) {
+      urlInput.select();
+      document.execCommand('copy');
+    }
+  });
+})();
+</script>

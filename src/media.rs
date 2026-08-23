@@ -1,5 +1,5 @@
 use std::cmp::Reverse;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use serde::Serialize;
@@ -10,7 +10,8 @@ use crate::{ListParams, SortDirection, SortField};
 #[derive(Debug, Clone)]
 pub struct MediaFile {
     pub name: String,
-    pub path: String, // relative path
+    pub path: String, // URL path, e.g. /media/clips/funny.webm
+    pub rel: String,  // path relative to MEDIA_PATH, e.g. clips/funny.webm
     pub size: u64,
     pub modified: Option<SystemTime>,
     pub created: Option<SystemTime>,
@@ -70,6 +71,7 @@ pub fn build_index(media_path: &Path) -> Vec<MediaFile> {
         files.push(MediaFile {
             name,
             path: format!("/media/{}", relative_path),
+            rel: relative_path,
             size: metadata.len(),
             modified: metadata.modified().ok(),
             created: metadata.created().ok(),
@@ -121,6 +123,7 @@ pub fn list_media_files(all_files: &[MediaFile], params: &ListParams) -> Paginat
 pub struct PlaylistItem {
     pub n: String, // name
     pub p: String, // path
+    pub r: String, // rel (path relative to MEDIA_PATH)
     pub e: String, // extension
     pub s: u64,    // size
 }
@@ -163,12 +166,46 @@ pub fn build_playlist(
         .map(|f| PlaylistItem {
             n: f.name.clone(),
             p: f.path.clone(),
+            r: f.rel.clone(),
             e: f.extension.clone(),
             s: f.size,
         })
         .collect();
 
     (items, current_idx)
+}
+
+#[derive(Debug)]
+pub enum ResolveError {
+    Io(std::io::Error),
+    Traversal,
+    NotAFile,
+}
+
+impl std::fmt::Display for ResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolveError::Io(e) => write!(f, "io error: {e}"),
+            ResolveError::Traversal => write!(f, "path traversal detected"),
+            ResolveError::NotAFile => write!(f, "not a file"),
+        }
+    }
+}
+
+impl std::error::Error for ResolveError {}
+
+/// Resolve a share-relative path against the media root, rejecting anything that
+/// escapes the root (path traversal) or is not a regular file.
+pub fn resolve_media_path(media_root: &Path, rel: &str) -> Result<PathBuf, ResolveError> {
+    let root = media_root.canonicalize().map_err(ResolveError::Io)?;
+    let candidate = root.join(rel).canonicalize().map_err(ResolveError::Io)?;
+    if !candidate.starts_with(&root) {
+        return Err(ResolveError::Traversal);
+    }
+    if !candidate.is_file() {
+        return Err(ResolveError::NotAFile);
+    }
+    Ok(candidate)
 }
 
 pub fn format_size(bytes: &u64) -> String {

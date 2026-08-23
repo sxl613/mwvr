@@ -1,11 +1,18 @@
 mod media;
+mod share;
 mod templates;
 use askama::Template;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::middleware;
 use axum::response::{IntoResponse, Redirect};
-use axum::{Router, http::StatusCode, response::Html, routing::get};
+use axum::{
+    Router,
+    http::StatusCode,
+    response::Html,
+    routing::{delete, get},
+};
 use serde::Deserialize;
+use share::{create_share, delete_share, list_shares, share_page, share_stream, shares_page};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use templates::{IndexTemplate, PlaylistTemplate};
 use tokio::sync::RwLock;
@@ -98,6 +105,9 @@ struct AppState {
     cache: Arc<RwLock<Vec<media::MediaFile>>>,
     auth_cookie_name: Option<String>,
     auth_cookie_value: Option<String>,
+    share_store: share::ShareStore,
+    media_root: PathBuf,
+    public_base_url: String,
 }
 
 #[tokio::main]
@@ -112,6 +122,11 @@ async fn main() {
     let media_path = std::env::var("MEDIA_PATH").unwrap_or_else(|_| "./media".to_string());
     let auth_cookie_value = std::env::var("AUTH_COOKIE_VALUE").ok();
     let auth_cookie_name = std::env::var("AUTH_COOKIE_NAME").ok();
+    let share_db_path =
+        std::env::var("SHARE_DB_PATH").unwrap_or_else(|_| "./shares.db".to_string());
+    let public_base_url = std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| {
+        format!("http://{}:{}", addr, port)
+    });
 
     // Build initial file index
     let index = media::build_index(&PathBuf::from(&media_path));
@@ -128,25 +143,51 @@ async fn main() {
         }
     });
 
+    // Open the share store (SQLite)
+    let share_store = share::ShareStore::open(PathBuf::from(&share_db_path).as_path())
+        .await
+        .expect("Failed to open share database");
+
+    // Purge expired share links periodically
+    let purge_store = share_store.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            let _ = purge_store.purge_expired().await;
+        }
+    });
+
     // Create application state
     let state = AppState {
         cache: cache.clone(),
-        auth_cookie_value: auth_cookie_value,
-        auth_cookie_name: auth_cookie_name,
+        auth_cookie_value,
+        auth_cookie_name,
+        share_store,
+        media_root: PathBuf::from(&media_path),
+        public_base_url,
     };
 
-    // Build our application with routes
-    let app = Router::new()
+    // Private routes: everything behind the auth middleware (and Cloudflare Access).
+    let private = Router::new()
         .route("/", get(index_handler))
         .route("/playlist", get(playlist_handler))
         .route("/v/{filename}", get(watch_redirect))
+        .route("/shares", get(shares_page))
+        .route("/api/shares", get(list_shares).post(create_share))
+        .route("/api/shares/{uuid}", delete(delete_share))
+        .nest_service("/media", ServeDir::new(media_path))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
-        ))
-        // Serve static files from media directory
-        .nest_service("/media", ServeDir::new(media_path))
-        .with_state(state);
+        ));
+
+    // Public share surface: UUID-gated, deliberately outside the auth middleware.
+    let public = Router::new()
+        .route("/share/{uuid}", get(share_page))
+        .route("/share/{uuid}/stream", get(share_stream));
+
+    let app = private.merge(public).with_state(state);
 
     // Parse the bind address
     let addr: SocketAddr = bind_addr.parse().expect("Invalid BIND_ADDRESS");
@@ -226,6 +267,7 @@ async fn playlist_handler(
         .map(|item| media::MediaFile {
             name: item.n.clone(),
             path: item.p.clone(),
+            rel: item.r.clone(),
             size: item.s,
             modified: None,
             created: None,
@@ -234,6 +276,7 @@ async fn playlist_handler(
         .unwrap_or_else(|| media::MediaFile {
             name: "Unknown".into(),
             path: "".into(),
+            rel: "".into(),
             size: 0,
             modified: None,
             created: None,

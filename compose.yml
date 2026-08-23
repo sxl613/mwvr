@@ -1,0 +1,56 @@
+# Works with: docker compose, podman compose, and podman-compose.
+# No "version:" key (obsolete in Compose Spec v2 and ignored/warned by podman-compose).
+services:
+  canis:
+    build:
+      context: .
+      target: canis
+    image: canis:latest
+    restart: unless-stopped
+    environment:
+      MEDIA_PATH: /webm
+      PORT: "3000"
+      BIND_ADDRESS: 0.0.0.0          # inside the container; only cloudflared can reach it
+      # Optional second factor. Leave empty to rely on Cloudflare Access alone.
+      AUTH_COOKIE_NAME: ""
+      AUTH_COOKIE_VALUE: ""
+      # Origin used to build copy-pasteable share URLs.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+      # SQLite backend (recommended).
+      SHARE_DB_PATH: /data/shares.db
+    volumes:
+      - ${MEDIA_HOST_PATH:?set MEDIA_HOST_PATH in .env}:/webm:ro   # e.g. /video
+      - canis-data:/data
+    networks:
+      - internal
+    # Deliberately no ports: canis is only reachable through cloudflared.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      # Dashboard-managed tunnel: the token is all the connector needs.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}
+    networks:
+      - internal
+    depends_on:
+      - canis
+
+  # Optional: only if you choose the Redis backend instead of SQLite.
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: unless-stopped
+  #   command: ["redis-server", "--appendonly", "yes"]
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  canis-data:
+  # redis-data:

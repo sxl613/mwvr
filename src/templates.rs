@@ -20,3 +20,17 @@ pub struct PlaylistTemplate {
     pub dir: SortDirection,
     pub search: String,
 }
+
+#[derive(Template)]
+#[template(path = "share.html")]
+pub struct ShareTemplate {
+    pub uuid: String,
+    pub name: String,
+    pub extension: String,
+}
+
+#[derive(Template)]
+#[template(path = "shares.html")]
+pub struct SharesTemplate {
+    pub shares_json: String,
+}

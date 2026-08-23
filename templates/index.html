@@ -71,6 +71,14 @@
             color: inherit;
             text-decoration: none;
         }
+        h1.site-head { display: flex; align-items: baseline; justify-content: space-between; }
+        .site-nav {
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
+            color: var(--color-muted);
+            text-decoration: none;
+        }
+        .site-nav:hover { color: var(--color); }
 
         /* controls */
         .controls {
@@ -221,7 +229,10 @@
 </head>
 <body>
     <div class="container">
-        <h1><a href="/">mwvr</a></h1>
+        <h1 class="site-head">
+            <a href="/">mwvr</a>
+            <a class="site-nav" href="/shares">shares</a>
+        </h1>
 
       <form method="GET" action="/" class="controls">
           <div>
@@ -324,6 +335,7 @@
                             {{ crate::media::format_size(file.size) }}
                         </div>
                         <a class="watch-link" href="/playlist?video={{ file.name }}&sort={{ query.sort.as_str() }}&dir={{ query.dir.as_str() }}">Watch</a>
+                        <button class="watch-link share-btn" type="button" data-share-rel="{{ file.rel }}">share</button>
                     </div>
                 </div>
                 {% endfor %}
@@ -357,5 +369,6 @@
             }
         });
     </script>
+    {% include "share_ui.html" %}
 </body>
 </html>

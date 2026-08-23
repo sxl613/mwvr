@@ -270,6 +270,7 @@
     <div class="sidebar-header">
       <a class="back-link" href="/">&larr; list</a>
       <span class="count" id="sidebar-count"></span>
+      <button class="back-link share-btn share-current-btn" type="button" data-share-rel="">share</button>
       <label class="autoplay-label">
         <input type="checkbox" id="autoplay-toggle">
         autoplay
@@ -295,6 +296,7 @@
   <div class="sidebar-header">
     <a class="back-link" href="/">&larr; list</a>
     <span class="count" id="overlay-count"></span>
+    <button class="back-link share-btn share-current-btn" type="button" data-share-rel="">share</button>
     <label class="autoplay-label">
       <input type="checkbox" id="autoplay-toggle-mobile">
       autoplay
@@ -408,6 +410,11 @@
       if (idx < 0 || idx >= playlistData.length) return;
       currentIdx = idx;
       const item = playlistData[idx];
+
+      // Keep the share buttons pointed at the current video.
+      document.querySelectorAll('.share-current-btn').forEach(b => {
+        b.dataset.shareRel = item.r;
+      });
 
       // Update <source>
       let source = player.querySelector('source');
@@ -545,5 +552,6 @@
   })();
 </script>
 
+{% include "share_ui.html" %}
 </body>
 </html>
