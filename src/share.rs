@@ -332,10 +332,13 @@ pub async fn shares_page(State(state): State<AppState>) -> Result<Html<String>, 
     let shares_json =
         serde_json::to_string(&views).map_err(|e| ApiError::internal(e.to_string()))?;
 
-    SharesTemplate { shares_json }
-        .render()
-        .map(Html)
-        .map_err(ApiError::internal)
+    SharesTemplate {
+        shares_json,
+        analytics_tag: state.analytics_tag.clone(),
+    }
+    .render()
+    .map(Html)
+    .map_err(ApiError::internal)
 }
 
 pub async fn share_page(
@@ -371,6 +374,7 @@ pub async fn share_page(
         page_url,
         thumbnail_url,
         mime: format!("video/{}", extension),
+        analytics_tag: state.analytics_tag.clone(),
     }
     .render()
     .map_err(ApiError::internal)?;
@@ -422,6 +426,35 @@ pub async fn share_stream(
         }
         Err(never) => match never {},
     }
+}
+
+pub async fn share_download(
+    AxumPath(uuid): AxumPath<String>,
+    State(state): State<AppState>,
+    request: Request<Body>,
+) -> Response {
+    let share = match state.share_store.get(&uuid).await {
+        Ok(Some(share)) if !expired(share.expires_at) => share,
+        Ok(Some(share)) => {
+            let _ = state.share_store.delete(&share.uuid).await;
+            remove_thumbnail(&state.thumb_dir, &share.uuid).await;
+            return (StatusCode::NOT_FOUND, "share expired".to_string()).into_response();
+        }
+        Ok(None) => {
+            return (StatusCode::NOT_FOUND, "share not found".to_string()).into_response();
+        }
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+        }
+    };
+
+    let path = match resolve_media_path(&state.media_root, &share.rel) {
+        Ok(p) => p,
+        Err(e) => return (StatusCode::NOT_FOUND, e.to_string()).into_response(),
+    };
+
+    // Content-Disposition: attachment forces a download on desktop and mobile.
+    crate::download::serve_attachment(path, request).await
 }
 
 pub async fn share_thumbnail(

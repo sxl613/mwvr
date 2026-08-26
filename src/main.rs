@@ -1,3 +1,4 @@
+mod download;
 mod media;
 mod share;
 mod templates;
@@ -11,10 +12,11 @@ use axum::{
     response::Html,
     routing::{delete, get},
 };
+use download::download_media;
 use serde::Deserialize;
 use share::{
-    create_share, delete_share, list_shares, share_page, share_stream, share_thumbnail,
-    shares_page,
+    create_share, delete_share, list_shares, share_download, share_page, share_stream,
+    share_thumbnail, shares_page,
 };
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use templates::{IndexTemplate, PlaylistTemplate};
@@ -191,6 +193,7 @@ async fn main() {
         .route("/", get(index_handler))
         .route("/playlist", get(playlist_handler))
         .route("/v/{filename}", get(watch_redirect))
+        .route("/download/{*rest}", get(download_media))
         .route("/shares", get(shares_page))
         .route("/api/shares", get(list_shares).post(create_share))
         .route("/api/shares/{uuid}", delete(delete_share))
@@ -204,7 +207,8 @@ async fn main() {
     let public = Router::new()
         .route("/share/{uuid}", get(share_page))
         .route("/share/{uuid}/stream", get(share_stream))
-        .route("/share/{uuid}/thumbnail", get(share_thumbnail));
+        .route("/share/{uuid}/thumbnail", get(share_thumbnail))
+        .route("/share/{uuid}/download", get(share_download));
 
     let app = private.merge(public).with_state(state);
 

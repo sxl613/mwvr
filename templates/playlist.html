@@ -26,7 +26,10 @@
 
   <!-- Player -->
   <main class="player-area">
-    <div class="current-title" id="current-title"></div>
+    <div class="player-head">
+      <div class="current-title" id="current-title"></div>
+      <a class="download-btn" id="download-current" href="#" download>download</a>
+    </div>
     <video id="player" preload="none" controls playsinline>
       <source src="" type="">
     </video>
@@ -171,6 +174,11 @@
       source.src = item.p;
       source.type = 'video/' + item.e;
       player.load();
+
+      // Point the download button at the current video.
+      const downloadLink = document.getElementById('download-current');
+      downloadLink.href = '/download/' + item.r.split('/').map(encodeURIComponent).join('/');
+      downloadLink.setAttribute('download', item.n);
 
       // Update UI
       document.title = item.n;

@@ -27,6 +27,9 @@
     <video controls playsinline preload="metadata">
       <source src="/share/{{ uuid }}/stream" type="video/{{ extension }}">
     </video>
+    <div class="share-actions">
+      <a class="download-btn" href="/share/{{ uuid }}/download" download="{{ name }}">download</a>
+    </div>
     <p>shared via mwvr</p>
   </main>
   {% include "theme_select.html" %}
