@@ -114,6 +114,7 @@ struct AppState {
     media_root: PathBuf,
     public_base_url: String,
     thumb_dir: PathBuf,
+    analytics_tag: String,
 }
 
 #[tokio::main]
@@ -136,6 +137,9 @@ async fn main() {
     let thumb_dir = PathBuf::from(
         std::env::var("THUMB_DIR").unwrap_or_else(|_| "./thumbs".to_string()),
     );
+    // Optional HTML snippet (e.g. an analytics script) injected at the end of
+    // <head> on every page. Unset/empty to disable.
+    let analytics_tag = std::env::var("ANALYTICS_TAG").unwrap_or_default();
 
     // Build initial file index
     let index = media::build_index(&PathBuf::from(&media_path));
@@ -186,6 +190,7 @@ async fn main() {
         media_root: PathBuf::from(&media_path),
         public_base_url,
         thumb_dir,
+        analytics_tag,
     };
 
     // Private routes: everything behind the auth middleware (and Cloudflare Access).
@@ -229,10 +234,14 @@ async fn index_handler(
 ) -> Result<Html<String>, (StatusCode, String)> {
     let files = state.cache.read().await;
     let paginated = media::list_media_files(&files, &query);
-    IndexTemplate { paginated, query }
-        .render()
-        .map(Html)
-        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
+    IndexTemplate {
+        paginated,
+        query,
+        analytics_tag: state.analytics_tag.clone(),
+    }
+    .render()
+    .map(Html)
+    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
 }
 
 #[derive(Deserialize)]
@@ -316,6 +325,7 @@ async fn playlist_handler(
         sort: params.sort,
         dir: params.dir,
         search: params.query,
+        analytics_tag: state.analytics_tag.clone(),
     }
     .render()
     .map(Html)

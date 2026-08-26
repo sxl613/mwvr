@@ -8,6 +8,7 @@ use askama::Template;
 pub struct IndexTemplate {
     pub paginated: PaginatedMedia,
     pub query: ListParams,
+    pub analytics_tag: String,
 }
 
 #[derive(Template)]
@@ -19,6 +20,7 @@ pub struct PlaylistTemplate {
     pub sort: SortField,
     pub dir: SortDirection,
     pub search: String,
+    pub analytics_tag: String,
 }
 
 #[derive(Template)]
@@ -30,10 +32,12 @@ pub struct ShareTemplate {
     pub page_url: String,
     pub thumbnail_url: String,
     pub mime: String,
+    pub analytics_tag: String,
 }
 
 #[derive(Template)]
 #[template(path = "shares.html")]
 pub struct SharesTemplate {
     pub shares_json: String,
+    pub analytics_tag: String,
 }

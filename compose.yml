@@ -20,6 +20,8 @@ services:
       SHARE_DB_PATH: /data/shares.db
       # Generated share thumbnails (same persistent volume as the DB).
       THUMB_DIR: /data/thumbs
+      # Optional HTML snippet injected at the end of <head> on every page (e.g. analytics).
+      ANALYTICS_TAG: ${ANALYTICS_TAG:-}
     volumes:
       - ${MEDIA_HOST_PATH:?set MEDIA_HOST_PATH in .env}:/webm:ro   # e.g. /video
       - canis-data:/data

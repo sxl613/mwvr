@@ -15,4 +15,12 @@ If both are set the app is going to return a 401 unless queried with the cookie.
 BIND_ADDRESS=127.0.0.1 PORT=3344 \
 AUTH_COOKIE_NAME=X-Hot-Dog AUTH_COOKIE_VALUE=yummy canis
 ```
+To run locally with the cookie auth and an analytics snippet:
+
+```bash
+BIND_ADDRESS=127.0.0.1 PORT=3344 \
+AUTH_COOKIE_NAME=X-Hot-Dog AUTH_COOKIE_VALUE=yummy \
+ANALYTICS_TAG='<script async src="https://analytics.example.com/script.js" data-website-id="xxxx"></script>' canis
+```
+
 to run locally on port 3344 with some basic Cookie authentication.
