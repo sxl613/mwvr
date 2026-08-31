@@ -29,7 +29,17 @@
   <main class="player-area">
     <div class="player-head">
       <div class="current-title" id="current-title"></div>
-      <a class="download-btn" id="download-current" href="#" download>download</a>
+      <div class="download-wrap">
+        <a class="download-btn" id="download-current" href="#" download>download</a>
+        <button class="download-btn download-caret" id="download-caret" type="button"
+                aria-haspopup="menu" aria-expanded="false" aria-label="download options">&#9662;</button>
+        <ul class="download-menu" id="download-menu" role="menu" hidden>
+          <li><a id="download-original" href="#" download>download original</a></li>
+          <li id="convert-item" hidden>
+            <a id="download-mp4" href="#" download>convert to mp4</a>
+          </li>
+        </ul>
+      </div>
     </div>
     <video id="player" preload="none" controls playsinline>
       <source src="" type="">
@@ -178,8 +188,27 @@
 
       // Point the download button at the current video.
       const downloadLink = document.getElementById('download-current');
-      downloadLink.href = '/download/' + item.r.split('/').map(encodeURIComponent).join('/');
+      const base = '/download/' + item.r.split('/').map(encodeURIComponent).join('/');
+      downloadLink.href = base;
       downloadLink.setAttribute('download', item.n);
+
+      // The "download original" menu item mirrors the main button.
+      const originalLink = document.getElementById('download-original');
+      originalLink.href = base;
+      originalLink.setAttribute('download', item.n);
+
+      // "Convert to mp4" only makes sense for webm sources.
+      const convertItem = document.getElementById('convert-item');
+      const mp4Link = document.getElementById('download-mp4');
+      if (item.e.toLowerCase() === 'webm') {
+        convertItem.hidden = false;
+        const mp4Name = item.n.replace(/\.webm$/i, '.mp4');
+        mp4Link.href = base + '?format=mp4';
+        mp4Link.setAttribute('download', mp4Name);
+      } else {
+        convertItem.hidden = true;
+        closeDownloadMenu();
+      }
 
       // Update UI
       document.title = item.n;
@@ -302,6 +331,31 @@
         else prev();
       }
     });
+
+    // ── Download dropdown ──
+    const downloadCaret = document.getElementById('download-caret');
+    const downloadMenu = document.getElementById('download-menu');
+
+    function closeDownloadMenu() {
+      downloadMenu.hidden = true;
+      downloadCaret.setAttribute('aria-expanded', 'false');
+    }
+
+    downloadCaret.addEventListener('click', e => {
+      e.stopPropagation();
+      const willOpen = downloadMenu.hidden;
+      downloadMenu.hidden = !willOpen;
+      downloadCaret.setAttribute('aria-expanded', willOpen);
+    });
+
+    // Close on outside click, Escape, or after picking an item.
+    document.addEventListener('click', e => {
+      if (!downloadMenu.hidden && !e.target.closest('.download-wrap')) closeDownloadMenu();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !downloadMenu.hidden) closeDownloadMenu();
+    });
+    downloadMenu.addEventListener('click', closeDownloadMenu);
 
     // ── Init ──
     renderPlaylists();

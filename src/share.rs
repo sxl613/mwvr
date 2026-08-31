@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use askama::Template;
 use axum::body::Body;
-use axum::extract::{Path as AxumPath, State};
+use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Request, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::Json;
@@ -15,6 +15,7 @@ use tower::ServiceExt;
 use tower_http::services::ServeFile;
 use uuid::Uuid;
 
+use crate::download::{convert_attachment, DownloadParams};
 use crate::media::resolve_media_path;
 use crate::templates::{ShareTemplate, SharesTemplate};
 use crate::AppState;
@@ -364,6 +365,13 @@ pub async fn share_page(
         .map(|(_, ext)| ext.to_lowercase())
         .unwrap_or_else(|| "mp4".into());
 
+    // Filename for the "convert to mp4" download (extension swapped, case-safe).
+    let mp4_name = share
+        .name
+        .rsplit_once('.')
+        .map(|(stem, _)| format!("{}.mp4", stem))
+        .unwrap_or_else(|| format!("{}.mp4", share.name));
+
     let page_url = share_url(&state.public_base_url, &share.uuid);
     let thumbnail_url = format!("{}/thumbnail", page_url);
 
@@ -371,6 +379,7 @@ pub async fn share_page(
         uuid: share.uuid,
         name: share.name,
         extension: extension.clone(),
+        mp4_name,
         page_url,
         thumbnail_url,
         mime: format!("video/{}", extension),
@@ -431,6 +440,7 @@ pub async fn share_stream(
 pub async fn share_download(
     AxumPath(uuid): AxumPath<String>,
     State(state): State<AppState>,
+    query: Query<DownloadParams>,
     request: Request<Body>,
 ) -> Response {
     let share = match state.share_store.get(&uuid).await {
@@ -452,6 +462,11 @@ pub async fn share_download(
         Ok(p) => p,
         Err(e) => return (StatusCode::NOT_FOUND, e.to_string()).into_response(),
     };
+
+    // `?format=mp4` → transcode to MP4; otherwise serve the original bytes.
+    if query.format.as_deref() == Some("mp4") {
+        return convert_attachment(path).await;
+    }
 
     // Content-Disposition: attachment forces a download on desktop and mobile.
     crate::download::serve_attachment(path, request).await

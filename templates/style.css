@@ -176,9 +176,43 @@ p { color: var(--color-muted); font-size: 0.85rem; }
 }
 .download-btn:active { transform: translateY(1px); }
 
+/* Split button + dropdown for the download action */
+.download-wrap { position: relative; display: inline-flex; align-items: stretch; }
+.download-caret {
+  padding: 0.3rem 0.45rem;
+  border-left: 1px solid var(--download-fg);
+}
+.download-caret::before { content: ""; }
+.download-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 11rem;
+  z-index: 20;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--bg, #111);
+  border: 1px solid var(--border-input);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.download-menu a {
+  display: block;
+  padding: 0.4rem 0.65rem;
+  color: var(--color-link);
+  text-decoration: none;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.download-menu a:hover { background: var(--bg-hover); color: var(--color-link-h); }
+.download-menu[hidden], .download-menu li[hidden] { display: none; }
+
 /* Roomier tap target on phones (applies to both pages) */
 @media (max-width: 750px) {
   .download-btn { padding: 0.45rem 0.9rem; font-size: 0.72rem; }
+  .download-caret { padding: 0.45rem 0.6rem; }
 }
 
 /* =================================================================

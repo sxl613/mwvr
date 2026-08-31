@@ -29,11 +29,45 @@
       <source src="/share/{{ uuid }}/stream" type="video/{{ extension }}">
     </video>
     <div class="share-actions">
-      <a class="download-btn" href="/share/{{ uuid }}/download" download="{{ name }}">download</a>
+      <div class="download-wrap">
+        <a class="download-btn" href="/share/{{ uuid }}/download" download="{{ name }}">download</a>
+        <button class="download-btn download-caret" id="share-download-caret" type="button"
+                aria-haspopup="menu" aria-expanded="false" aria-label="download options">&#9662;</button>
+        <ul class="download-menu" id="share-download-menu" role="menu" hidden>
+          <li><a href="/share/{{ uuid }}/download" download="{{ name }}">download original</a></li>
+          <li{% if extension != "webm" %} hidden{% endif %}>
+            <a href="/share/{{ uuid }}/download?format=mp4" download="{{ mp4_name }}">convert to mp4</a>
+          </li>
+        </ul>
+      </div>
     </div>
     <p>shared via mwvr</p>
   </main>
   {% include "theme_select.html" %}
   {% include "theme.js" %}
+
+  <script>
+    (() => {
+      const caret = document.getElementById('share-download-caret');
+      const menu = document.getElementById('share-download-menu');
+      const close = () => {
+        menu.hidden = true;
+        caret.setAttribute('aria-expanded', 'false');
+      };
+      caret.addEventListener('click', e => {
+        e.stopPropagation();
+        const willOpen = menu.hidden;
+        menu.hidden = !willOpen;
+        caret.setAttribute('aria-expanded', willOpen);
+      });
+      document.addEventListener('click', e => {
+        if (!menu.hidden && !e.target.closest('.download-wrap')) close();
+      });
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && !menu.hidden) close();
+      });
+      menu.addEventListener('click', close);
+    })();
+  </script>
 </body>
 </html>
