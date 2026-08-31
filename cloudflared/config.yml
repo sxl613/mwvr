@@ -1,0 +1,12 @@
+# Locally-managed Cloudflare tunnel.
+# 1. cloudflared tunnel create canis
+# 2. cloudflared tunnel route dns canis canis.example.com
+# 3. copy the credentials JSON to ./cloudflared/credentials.json (gitignored)
+# 4. set <TUNNEL_ID> below
+tunnel: 77777777-1111-bbbb-aaaa-ffffffffffff
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: canis.example.com
+    service: http://canis:3000
+  - service: http_status:404
