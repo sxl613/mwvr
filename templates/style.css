@@ -10,85 +10,85 @@
 
 /* ── Theme: dark (default) ─────────────────────────────────────── */
 :root {
-  --bg:           #111;
-  --bg-card:      #111;
-  --bg-hover:     #181818;
-  --bg-video:     #0a0a0a;
-  --bg-grid:      #222;
-  --bg-active:    #1a1a1a;
-  --bg-sidebar:   #0e0e0e;
-  --color:        #aaa;
-  --color-h1:     #ccc;
-  --color-name:   #ccc;
-  --color-muted:  #555;
-  --color-label:  #666;
-  --color-link:   #777;
-  --color-link-h: #bbb;
-  --border:       #222;
-  --border-input: #333;
-  --border-hover: #555;
-  --accent:       #555;
-  --download-bg:        #28a565;
-  --download-bg-h:      #34c678;
-  --download-fg:        #06240f;
-  --download-border:    #3ddc8a;
-  --download-glow:      rgba(72, 220, 138, 0.55);
+  --bg:           #171513;
+  --bg-card:      #1f1b17;
+  --bg-hover:     #29231d;
+  --bg-video:     #100e0c;
+  --bg-grid:      #332a20;
+  --bg-active:    #292219;
+  --bg-sidebar:   #14110e;
+  --color:        #e9e3d9;
+  --color-h1:     #f7f0e4;
+  --color-name:   #f7f0e4;
+  --color-muted:  #b6aa98;
+  --color-label:  #b6aa98;
+  --color-link:   #e3a54f;
+  --color-link-h: #f5c878;
+  --border:       #332b22;
+  --border-input: #70614f;
+  --border-hover: #b3905f;
+  --accent:       #e3a54f;
+  --download-bg:        #e3a54f;
+  --download-bg-h:      #d9983f;
+  --download-fg:        #2b2011;
+  --download-border:    #a86718;
+  --download-glow:      rgba(227, 165, 79, 0.4);
 }
 
 /* ── Theme: light (auto — follows the OS setting) ──────────────── */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg:           #f5f5f5;
-    --bg-card:      #f5f5f5;
-    --bg-hover:     #ebebeb;
-    --bg-video:     #e0e0e0;
-    --bg-grid:      #ddd;
-    --bg-active:    #e8e8e8;
-    --bg-sidebar:   #eee;
-    --color:        #555;
-    --color-h1:     #222;
-    --color-name:   #222;
-    --color-muted:  #999;
-    --color-label:  #888;
-    --color-link:   #666;
-    --color-link-h: #333;
-    --border:       #ddd;
-    --border-input: #ccc;
-    --border-hover: #999;
-    --accent:       #999;
-    --download-bg:        #1d8f52;
-    --download-bg-h:      #17a15d;
+    --bg:           #fbf8f1;
+    --bg-card:      #fbf8f1;
+    --bg-hover:     #f1ebdd;
+    --bg-video:     #e8e0d2;
+    --bg-grid:      #e3dacb;
+    --bg-active:    #efe5d5;
+    --bg-sidebar:   #f4efe5;
+    --color:        #302a22;
+    --color-h1:     #211c16;
+    --color-name:   #211c16;
+    --color-muted:  #62584b;
+    --color-label:  #62584b;
+    --color-link:   #805000;
+    --color-link-h: #623c00;
+    --border:       #e2d8c8;
+    --border-input: #8e806d;
+    --border-hover: #64543f;
+    --accent:       #805000;
+    --download-bg:        #805000;
+    --download-bg-h:      #694100;
     --download-fg:        #ffffff;
-    --download-border:    #14693c;
-    --download-glow:      rgba(29, 143, 82, 0.45);
+    --download-border:    #523400;
+    --download-glow:      rgba(128, 80, 0, 0.3);
   }
 }
 
 /* ── Theme: light (forced via the theme switcher) ──────────────── */
 :root[data-theme="light"] {
-  --bg:           #f5f5f5;
-  --bg-card:      #f5f5f5;
-  --bg-hover:     #ebebeb;
-  --bg-video:     #e0e0e0;
-  --bg-grid:      #ddd;
-  --bg-active:    #e8e8e8;
-  --bg-sidebar:   #eee;
-  --color:        #555;
-  --color-h1:     #222;
-  --color-name:   #222;
-  --color-muted:  #999;
-  --color-label:  #888;
-  --color-link:   #666;
-  --color-link-h: #333;
-  --border:       #ddd;
-  --border-input: #ccc;
-  --border-hover: #999;
-  --accent:       #999;
-  --download-bg:        #1d8f52;
-  --download-bg-h:      #17a15d;
+  --bg:           #fbf8f1;
+  --bg-card:      #fbf8f1;
+  --bg-hover:     #f1ebdd;
+  --bg-video:     #e8e0d2;
+  --bg-grid:      #e3dacb;
+  --bg-active:    #efe5d5;
+  --bg-sidebar:   #f4efe5;
+  --color:        #302a22;
+  --color-h1:     #211c16;
+  --color-name:   #211c16;
+  --color-muted:  #62584b;
+  --color-label:  #62584b;
+  --color-link:   #805000;
+  --color-link-h: #623c00;
+  --border:       #e2d8c8;
+  --border-input: #8e806d;
+  --border-hover: #64543f;
+  --accent:       #805000;
+  --download-bg:        #805000;
+  --download-bg-h:      #694100;
   --download-fg:        #ffffff;
-  --download-border:    #14693c;
-  --download-glow:      rgba(29, 143, 82, 0.45);
+  --download-border:    #523400;
+  --download-glow:      rgba(128, 80, 0, 0.3);
 }
 
 /* ── Reset & shared base ───────────────────────────────────────── */
