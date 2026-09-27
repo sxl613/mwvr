@@ -109,7 +109,7 @@
         {% else %}
             <div class="media-grid">
                 {% for file in paginated.files %}
-                <div class="media-card">
+                <div class="media-card" data-media-rel="{{ file.rel }}">
                     <video preload="none" controls>
                         <source src="{{ file.path }}" type="video/{{ file.extension }}">
                     </video>
@@ -119,7 +119,11 @@
                             <span class="extension-badge">{{ file.extension }}</span>
                             {{ crate::media::format_size(file.size) }}
                         </div>
-                        <a class="watch-link" href="/playlist?video={{ file.name }}&sort={{ query.sort.as_str() }}&dir={{ query.dir.as_str() }}">Watch</a>
+                        <a class="watch-link" href="/playlist?video={{ file.name }}&sort={{ query.sort.as_str() }}&dir={{ query.dir.as_str() }}" data-watch-link>Watch</a>
+                        <span class="watched-badge" data-watched hidden>watched</span>
+                        <div class="watch-progress" data-progress hidden>
+                            <div class="watch-progress-fill" data-progress-fill></div>
+                        </div>
                         <button class="watch-link share-btn" type="button" data-share-rel="{{ file.rel }}">share</button>
                     </div>
                 </div>
@@ -142,6 +146,29 @@
 
         form.addEventListener('submit', () => {
             PREFS.forEach(key => localStorage.setItem(`mwvr_${key}`, form.elements[key].value));
+        });
+
+        // Playback state is local to this browser and keyed by the path inside
+        // MEDIA_PATH, so files with the same basename remain distinct.
+        document.querySelectorAll('.media-card[data-media-rel]').forEach(card => {
+            const key = 'mwvr_playback:' + card.dataset.mediaRel;
+            let saved;
+            try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) {}
+            if (!saved || !Number.isFinite(saved.duration) || saved.duration <= 0) return;
+
+            const progress = Math.max(0, Math.min(100, saved.position / saved.duration * 100));
+            const bar = card.querySelector('[data-progress]');
+            card.querySelector('[data-progress-fill]').style.width = progress + '%';
+            bar.hidden = false;
+
+            const watchLink = card.querySelector('[data-watch-link]');
+            const watched = !!saved.watched;
+            if (watched) {
+                card.querySelector('[data-watched]').hidden = false;
+                watchLink.textContent = 'watch again';
+            } else if (saved.position > 10) {
+                watchLink.textContent = 'continue watching';
+            }
         });
 
         document.addEventListener('keydown', (e) => {

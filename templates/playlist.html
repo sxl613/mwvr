@@ -89,6 +89,25 @@
     const toggleBtn = document.getElementById('toggle-playlist');
     const overlay = document.getElementById('playlist-overlay');
     const closeOverlay = document.getElementById('close-overlay');
+    let playbackKey = null;
+    let lastSavedSecond = -1;
+
+    function readPlayback(key) {
+      try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; }
+    }
+
+    function savePlayback(watched = false) {
+      if (!playbackKey || !Number.isFinite(player.duration) || player.duration <= 0) return;
+      const position = Math.max(0, player.currentTime || 0);
+      const old = readPlayback(playbackKey) || {};
+      const state = {
+        position,
+        duration: player.duration,
+        watched: watched || (old.watched && position >= player.duration * 0.9),
+        updatedAt: Date.now(),
+      };
+      try { localStorage.setItem(playbackKey, JSON.stringify(state)); } catch (_) {}
+    }
 
     // ── Autoplay state ──
     let autoplay = localStorage.getItem('mwvr_autoplay') === 'true';
@@ -170,6 +189,9 @@
       if (idx < 0 || idx >= playlistData.length) return;
       currentIdx = idx;
       const item = playlistData[idx];
+      playbackKey = 'mwvr_playback:' + item.r;
+      const itemPlaybackKey = playbackKey;
+      lastSavedSecond = -1;
 
       // Keep the share buttons pointed at the current video.
       document.querySelectorAll('.share-current-btn').forEach(b => {
@@ -185,6 +207,16 @@
       source.src = item.p;
       source.type = 'video/' + item.e;
       player.load();
+
+      // Restore a saved position after the browser learns the media duration.
+      player.addEventListener('loadedmetadata', function restorePosition() {
+        player.removeEventListener('loadedmetadata', restorePosition);
+        const saved = readPlayback(itemPlaybackKey);
+        if (saved && !saved.watched && Number.isFinite(saved.position) &&
+            saved.position > 10 && saved.position < player.duration - 10) {
+          player.currentTime = saved.position;
+        }
+      });
 
       // Point the download button at the current video.
       const downloadLink = document.getElementById('download-current');
@@ -253,7 +285,16 @@
     }
 
     // ── Autoplay next on ended ──
+    player.addEventListener('timeupdate', () => {
+      const second = Math.floor(player.currentTime || 0);
+      if (second !== lastSavedSecond && second % 5 === 0) {
+        lastSavedSecond = second;
+        savePlayback();
+      }
+    });
+    player.addEventListener('pause', () => savePlayback());
     player.addEventListener('ended', () => {
+      savePlayback(true);
       if (autoplay && currentIdx < playlistData.length - 1) {
         next();
       }

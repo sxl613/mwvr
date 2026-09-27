@@ -289,6 +289,27 @@ body.page-index { padding: 2rem; }
   display: block;
 }
 .page-index .media-info { padding: 0.75rem; }
+.page-index .media-info .watch-link,
+.page-index .media-info .share-btn { margin-top: 0.55rem; }
+.page-index .watched-badge {
+  margin-left: 0.45rem;
+  color: var(--color-muted);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.page-index .watch-progress {
+  height: 3px;
+  margin-top: 0.55rem;
+  overflow: hidden;
+  background: var(--border);
+}
+.page-index .watch-progress[hidden] { display: none; }
+.page-index .watch-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
 .page-index .media-name { font-size: 0.8rem; word-break: break-word; color: var(--color-name); }
 .page-index .media-meta { font-size: 0.7rem; color: var(--color-muted); margin-top: 0.25rem; }
 .page-index .extension-badge {
