@@ -18,7 +18,7 @@ use share::{
     create_share, delete_share, list_shares, share_download, share_page, share_stream,
     share_thumbnail, shares_page,
 };
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 use templates::{IndexTemplate, PlaylistTemplate};
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
@@ -115,6 +115,7 @@ struct AppState {
     public_base_url: String,
     thumb_dir: PathBuf,
     analytics_tag: String,
+    media_metadata: Arc<RwLock<HashMap<String, media::CachedMediaMetadata>>>,
 }
 
 #[tokio::main]
@@ -191,6 +192,7 @@ async fn main() {
         public_base_url,
         thumb_dir,
         analytics_tag,
+        media_metadata: Arc::new(RwLock::new(HashMap::new())),
     };
 
     // Private routes: everything behind the auth middleware (and Cloudflare Access).
@@ -199,6 +201,8 @@ async fn main() {
         .route("/playlist", get(playlist_handler))
         .route("/v/{filename}", get(watch_redirect))
         .route("/play/{*rest}", get(play_media))
+        .route("/thumbnail/{*rest}", get(media::media_thumbnail))
+        .route("/api/media-info/{*rest}", get(media::media_info))
         .route("/download/{*rest}", get(download_media))
         .route("/shares", get(shares_page))
         .route("/api/shares", get(list_shares).post(create_share))

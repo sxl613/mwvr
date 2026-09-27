@@ -110,15 +110,16 @@
             <div class="media-grid">
                 {% for file in paginated.files %}
                 <div class="media-card" data-media-rel="{{ file.rel }}">
-                    <video preload="none" controls data-play-rel="{{ file.rel }}">
-                        <source>
-                    </video>
+                    <a class="media-poster" href="/playlist?video={{ file.name }}&sort={{ query.sort.as_str() }}&dir={{ query.dir.as_str() }}">
+                        <img loading="lazy" data-media-thumbnail data-thumb-rel="{{ file.rel }}" alt="">
+                    </a>
                     <div class="media-info">
                         <div class="media-name">{{ file.name }}</div>
                         <div class="media-meta">
                             <span class="extension-badge">{{ file.extension }}</span>
                             {{ crate::media::format_size(file.size) }}
                         </div>
+                        <div class="media-details" data-media-details data-info-rel="{{ file.rel }}" aria-live="polite"></div>
                         <a class="watch-link" href="/playlist?video={{ file.name }}&sort={{ query.sort.as_str() }}&dir={{ query.dir.as_str() }}" data-watch-link>Watch</a>
                         <span class="watched-badge" data-watched hidden>watched</span>
                         <div class="watch-progress" data-progress hidden>
@@ -151,8 +152,6 @@
         // Playback state is local to this browser and keyed by the path inside
         // MEDIA_PATH, so files with the same basename remain distinct.
         document.querySelectorAll('.media-card[data-media-rel]').forEach(card => {
-            const encodedPath = card.dataset.playRel.split('/').map(encodeURIComponent).join('/');
-            card.querySelector('source').src = '/play/' + encodedPath;
             const key = 'mwvr_playback:' + card.dataset.mediaRel;
             let saved;
             try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) {}
@@ -172,6 +171,58 @@
                 watchLink.textContent = 'continue watching';
             }
         });
+
+        function encodeMediaPath(path) {
+            return path.split('/').map(encodeURIComponent).join('/');
+        }
+
+        function formatDuration(seconds) {
+            const total = Math.floor(seconds);
+            const hours = Math.floor(total / 3600);
+            const minutes = Math.floor((total % 3600) / 60);
+            const remainder = total % 60;
+            return hours
+                ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+                : `${minutes}:${String(remainder).padStart(2, '0')}`;
+        }
+
+        async function loadMediaDetails(card) {
+            const path = card.dataset.mediaRel;
+            const details = card.querySelector('[data-media-details]');
+            try {
+                const response = await fetch('/api/media-info/' + encodeMediaPath(path));
+                if (!response.ok) throw new Error('metadata unavailable');
+                const info = await response.json();
+                const parts = [];
+                if (info.duration_seconds) parts.push(formatDuration(info.duration_seconds));
+                if (info.width && info.height) parts.push(`${info.width}×${info.height}`);
+                const codecs = [info.video_codec, info.audio_codec].filter(Boolean).join(' / ');
+                if (codecs) parts.push(codecs);
+                details.textContent = parts.join(' · ');
+            } catch (_) {
+                details.textContent = '';
+            }
+        }
+
+        const mediaCards = [...document.querySelectorAll('.media-card[data-media-rel]')];
+        mediaCards.forEach(card => {
+            const img = card.querySelector('[data-media-thumbnail]');
+            img.addEventListener('error', () => { img.hidden = true; });
+            img.src = '/thumbnail/' + encodeMediaPath(img.dataset.thumbRel);
+        });
+        if ('IntersectionObserver' in window) {
+            const observer = new IntersectionObserver(entries => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        observer.unobserve(entry.target);
+                        loadMediaDetails(entry.target);
+                    }
+                });
+            }, { rootMargin: '250px' });
+            mediaCards.forEach(card => observer.observe(card));
+        } else {
+            mediaCards.forEach(loadMediaDetails);
+        }
 
         document.addEventListener('keydown', (e) => {
             if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {

@@ -80,7 +80,7 @@ pub async fn remove_thumbnail(thumb_dir: &Path, uuid: &str) {
     let _ = tokio::fs::remove_file(thumb_dir.join(thumb_name(uuid))).await;
 }
 
-async fn generate_thumbnail(video: &Path, thumb: &Path) -> std::io::Result<()> {
+pub(crate) async fn generate_thumbnail(video: &Path, thumb: &Path) -> std::io::Result<()> {
     // Try a frame at 1s first; fall back to the first frame for very short clips.
     for ss in ["1", "0"] {
         let status = tokio::process::Command::new("ffmpeg")
