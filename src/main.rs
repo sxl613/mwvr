@@ -12,7 +12,7 @@ use axum::{
     response::Html,
     routing::{delete, get},
 };
-use download::download_media;
+use download::{download_media, play_media};
 use serde::Deserialize;
 use share::{
     create_share, delete_share, list_shares, share_download, share_page, share_stream,
@@ -198,6 +198,7 @@ async fn main() {
         .route("/", get(index_handler))
         .route("/playlist", get(playlist_handler))
         .route("/v/{filename}", get(watch_redirect))
+        .route("/play/{*rest}", get(play_media))
         .route("/download/{*rest}", get(download_media))
         .route("/shares", get(shares_page))
         .route("/api/shares", get(list_shares).post(create_share))
