@@ -704,7 +704,8 @@ button.back-link {
   font-size: 0.75rem;
   color: var(--color-label, #666);
 }
-.share-label select {
+.share-label select,
+.share-label input:not([type="checkbox"]) {
   background: transparent;
   border: 1px solid var(--border-input, #333);
   color: var(--color, #aaa);
@@ -714,6 +715,8 @@ button.back-link {
   cursor: pointer;
   margin-left: auto;
 }
+.share-label input:not([type="checkbox"]) { width: 11rem; }
+.share-one-time input { accent-color: var(--accent); }
 .share-body .watch-link {
   margin-top: 0;
   color: var(--color-link-h);

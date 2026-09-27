@@ -15,8 +15,8 @@ use axum::{
 use download::{download_media, play_media};
 use serde::Deserialize;
 use share::{
-    create_share, delete_share, list_shares, share_download, share_page, share_stream,
-    share_thumbnail, shares_page,
+    create_share, delete_share, list_shares, regenerate_share, share_download, share_page,
+    share_stream, share_thumbnail, shares_page,
 };
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 use templates::{IndexTemplate, PlaylistTemplate};
@@ -207,6 +207,7 @@ async fn main() {
         .route("/shares", get(shares_page))
         .route("/api/shares", get(list_shares).post(create_share))
         .route("/api/shares/{uuid}", delete(delete_share))
+        .route("/api/shares/{uuid}/regenerate", axum::routing::post(regenerate_share))
         .nest_service("/media", ServeDir::new(media_path))
         .layer(middleware::from_fn_with_state(
             state.clone(),

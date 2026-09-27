@@ -15,6 +15,17 @@
         <option value="2592000">30 days</option>
       </select>
     </label>
+    <label class="share-label">
+      custom expiry
+      <input id="share-expiry-at" type="datetime-local">
+    </label>
+    <label class="share-label">
+      maximum views
+      <input id="share-max-views" type="number" min="1" step="1" placeholder="unlimited">
+    </label>
+    <label class="share-label share-one-time">
+      <input id="share-one-time" type="checkbox"> one time link (1 view)
+    </label>
     <button class="watch-link" id="share-create" type="button">create link</button>
     <div class="share-result" id="share-result" hidden>
       <input id="share-url" type="text" readonly />
@@ -28,6 +39,9 @@
 (() => {
   const dialog = document.getElementById('share-dialog');
   const expiry = document.getElementById('share-expiry');
+  const expiryAt = document.getElementById('share-expiry-at');
+  const maxViewsInput = document.getElementById('share-max-views');
+  const oneTime = document.getElementById('share-one-time');
   const createBtn = document.getElementById('share-create');
   const result = document.getElementById('share-result');
   const urlInput = document.getElementById('share-url');
@@ -41,6 +55,9 @@
     result.hidden = true;
     errEl.hidden = true;
     urlInput.value = '';
+    expiryAt.value = '';
+    maxViewsInput.value = '';
+    oneTime.checked = false;
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
   }
@@ -54,12 +71,16 @@
 
   createBtn.addEventListener('click', async () => {
     if (!currentRel) return;
-    const expiresIn = expiry.value ? parseInt(expiry.value, 10) : null;
+    const expiresAt = expiryAt.value
+      ? Math.floor(new Date(expiryAt.value).getTime() / 1000)
+      : null;
+    const expiresIn = expiresAt ? null : (expiry.value ? parseInt(expiry.value, 10) : null);
+    const maxViews = oneTime.checked ? 1 : (maxViewsInput.value ? parseInt(maxViewsInput.value, 10) : null);
     try {
       const res = await fetch('/api/shares', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rel: currentRel, expires_in: expiresIn }),
+        body: JSON.stringify({ rel: currentRel, expires_in: expiresIn, expires_at: expiresAt, max_views: maxViews }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
