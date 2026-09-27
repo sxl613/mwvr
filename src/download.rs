@@ -119,7 +119,7 @@ fn ffmpeg_mp4_command(input: &Path) -> tokio::process::Command {
 
 /// Transcode the file to MP4 with ffmpeg and return it as a streaming
 /// attachment. No temp files: output goes straight into the response body.
-pub(crate) async fn convert_attachment(path: PathBuf) -> Response {
+async fn transcode_mp4(path: PathBuf, attachment: bool) -> Response {
     let filename = path
         .file_name()
         .and_then(|s| s.to_str())
@@ -155,11 +155,45 @@ pub(crate) async fn convert_attachment(path: PathBuf) -> Response {
     let mut response = Response::new(Body::from_stream(stream));
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("video/mp4"));
-    headers.insert(
-        header::CONTENT_DISPOSITION,
-        attachment_disposition(&mp4_filename(filename)),
-    );
+    if attachment {
+        headers.insert(
+            header::CONTENT_DISPOSITION,
+            attachment_disposition(&mp4_filename(filename)),
+        );
+    }
     response
+}
+
+pub(crate) async fn convert_attachment(path: PathBuf) -> Response {
+    transcode_mp4(path, true).await
+}
+
+/// Stream files in containers that browsers commonly cannot play as MP4.
+/// Direct serving is retained for MP4 and WebM so those files keep byte ranges
+/// and native seeking support.
+pub(crate) async fn play_media(
+    AxumPath(rel): AxumPath<String>,
+    State(state): State<AppState>,
+    request: Request<Body>,
+) -> Response {
+    let path = match resolve_media_path(&state.media_root, &rel) {
+        Ok(p) => p,
+        Err(e) => return (StatusCode::NOT_FOUND, e.to_string()).into_response(),
+    };
+
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if matches!(extension.as_str(), "mkv" | "avi" | "mov") {
+        return transcode_mp4(path, false).await;
+    }
+
+    match ServeFile::new(path).oneshot(request).await {
+        Ok(response) => response.map(Body::new),
+        Err(never) => match never {},
+    }
 }
 
 /// Stream a file with `Content-Disposition: attachment` so the browser

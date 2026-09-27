@@ -8,7 +8,7 @@ use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Request, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::Json;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower::ServiceExt;
@@ -27,6 +27,8 @@ pub struct Share {
     pub rel: String,
     pub created_at: u64,
     pub expires_at: Option<u64>,
+    pub view_count: u64,
+    pub max_views: Option<u64>,
 }
 
 /// Flat, JSON/template-friendly view of a share including its public URL.
@@ -37,6 +39,8 @@ pub struct ShareView {
     pub rel: String,
     pub created_at: u64,
     pub expires_at: Option<u64>,
+    pub view_count: u64,
+    pub max_views: Option<u64>,
     pub url: String,
 }
 
@@ -48,6 +52,8 @@ impl Share {
             rel: self.rel.clone(),
             created_at: self.created_at,
             expires_at: self.expires_at,
+            view_count: self.view_count,
+            max_views: self.max_views,
             url: share_url(public_base_url, &self.uuid),
         }
     }
@@ -80,7 +86,7 @@ pub async fn remove_thumbnail(thumb_dir: &Path, uuid: &str) {
     let _ = tokio::fs::remove_file(thumb_dir.join(thumb_name(uuid))).await;
 }
 
-async fn generate_thumbnail(video: &Path, thumb: &Path) -> std::io::Result<()> {
+pub(crate) async fn generate_thumbnail(video: &Path, thumb: &Path) -> std::io::Result<()> {
     // Try a frame at 1s first; fall back to the first frame for very short clips.
     for ss in ["1", "0"] {
         let status = tokio::process::Command::new("ffmpeg")
@@ -126,9 +132,32 @@ impl ShareStore {
                  name        TEXT NOT NULL,
                  rel         TEXT NOT NULL,
                  created_at  INTEGER NOT NULL,
-                 expires_at  INTEGER
+                 expires_at  INTEGER,
+                 view_count  INTEGER NOT NULL DEFAULT 0,
+                 max_views   INTEGER
              );
              CREATE INDEX IF NOT EXISTS idx_shares_expires_at ON shares(expires_at);",
+        )?;
+        let columns = {
+            let mut statement = conn.prepare("PRAGMA table_info(shares)")?;
+            statement
+                .query_map([], |row| row.get::<_, String>(1))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        if !columns.iter().any(|column| column == "view_count") {
+            conn.execute("ALTER TABLE shares ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0", [])?;
+        }
+        if !columns.iter().any(|column| column == "max_views") {
+            conn.execute("ALTER TABLE shares ADD COLUMN max_views INTEGER", [])?;
+        }
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS share_views (
+                 share_uuid TEXT NOT NULL,
+                 token      TEXT NOT NULL,
+                 created_at INTEGER NOT NULL,
+                 PRIMARY KEY (share_uuid, token)
+             );
+             CREATE INDEX IF NOT EXISTS idx_share_views_uuid ON share_views(share_uuid);",
         )?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -140,6 +169,7 @@ impl ShareStore {
         rel: &str,
         name: &str,
         expires_at: Option<u64>,
+        max_views: Option<u64>,
     ) -> Result<Share, rusqlite::Error> {
         let share = Share {
             uuid: Uuid::new_v4().to_string(),
@@ -147,18 +177,21 @@ impl ShareStore {
             rel: rel.to_string(),
             created_at: now_unix(),
             expires_at,
+            view_count: 0,
+            max_views,
         };
 
         let conn = self.conn.lock().await;
         conn.execute(
-            "INSERT INTO shares (uuid, name, rel, created_at, expires_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO shares (uuid, name, rel, created_at, expires_at, max_views)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![
                 share.uuid,
                 share.name,
                 share.rel,
                 share.created_at as i64,
                 share.expires_at.map(|v| v as i64),
+                share.max_views.map(|v| v as i64),
             ],
         )?;
         Ok(share)
@@ -167,7 +200,7 @@ impl ShareStore {
     pub async fn get(&self, uuid: &str) -> Result<Option<Share>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT uuid, name, rel, created_at, expires_at FROM shares WHERE uuid = ?1",
+            "SELECT uuid, name, rel, created_at, expires_at, view_count, max_views FROM shares WHERE uuid = ?1",
         )?;
         let mut rows = stmt.query_map(rusqlite::params![uuid], |row| {
             Ok(Share {
@@ -176,6 +209,8 @@ impl ShareStore {
                 rel: row.get(2)?,
                 created_at: row.get::<_, i64>(3)? as u64,
                 expires_at: row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                view_count: row.get::<_, i64>(5)? as u64,
+                max_views: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
             })
         })?;
         rows.next().transpose()
@@ -184,7 +219,7 @@ impl ShareStore {
     pub async fn list(&self) -> Result<Vec<Share>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT uuid, name, rel, created_at, expires_at FROM shares ORDER BY created_at DESC",
+            "SELECT uuid, name, rel, created_at, expires_at, view_count, max_views FROM shares ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(Share {
@@ -193,15 +228,108 @@ impl ShareStore {
                 rel: row.get(2)?,
                 created_at: row.get::<_, i64>(3)? as u64,
                 expires_at: row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                view_count: row.get::<_, i64>(5)? as u64,
+                max_views: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
             })
         })?;
         rows.collect()
     }
 
     pub async fn delete(&self, uuid: &str) -> Result<bool, rusqlite::Error> {
-        let conn = self.conn.lock().await;
-        let n = conn.execute("DELETE FROM shares WHERE uuid = ?1", rusqlite::params![uuid])?;
+        let mut conn = self.conn.lock().await;
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM share_views WHERE share_uuid = ?1", rusqlite::params![uuid])?;
+        let n = tx.execute("DELETE FROM shares WHERE uuid = ?1", rusqlite::params![uuid])?;
+        tx.commit()?;
         Ok(n > 0)
+    }
+
+    /// Count one browser visit per unguessable session cookie. Existing sessions
+    /// remain valid after the limit is reached so the first viewer can finish
+    /// streaming or downloading the file.
+    pub async fn register_view(&self, uuid: &str, token: &str) -> Result<bool, rusqlite::Error> {
+        let mut conn = self.conn.lock().await;
+        let tx = conn.transaction()?;
+        let existing: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM share_views WHERE share_uuid = ?1 AND token = ?2)",
+            rusqlite::params![uuid, token],
+            |row| row.get(0),
+        )?;
+        if existing {
+            tx.commit()?;
+            return Ok(true);
+        }
+        let updated = tx.execute(
+            "UPDATE shares SET view_count = view_count + 1
+             WHERE uuid = ?1 AND (max_views IS NULL OR view_count < max_views)",
+            rusqlite::params![uuid],
+        )?;
+        if updated == 0 {
+            tx.commit()?;
+            return Ok(false);
+        }
+        tx.execute(
+            "INSERT INTO share_views (share_uuid, token, created_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![uuid, token, now_unix() as i64],
+        )?;
+        tx.commit()?;
+        Ok(true)
+    }
+
+    pub async fn has_view(&self, uuid: &str, token: &str) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM share_views WHERE share_uuid = ?1 AND token = ?2)",
+            rusqlite::params![uuid, token],
+            |row| row.get(0),
+        )
+    }
+
+    pub async fn regenerate(&self, uuid: &str) -> Result<Option<Share>, rusqlite::Error> {
+        let mut conn = self.conn.lock().await;
+        let tx = conn.transaction()?;
+        let previous = tx.query_row(
+            "SELECT uuid, name, rel, expires_at, max_views FROM shares WHERE uuid = ?1",
+            rusqlite::params![uuid],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                    row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                ))
+            },
+        ).optional()?;
+        let Some((_, name, rel, expires_at, max_views)) = previous else {
+            tx.commit()?;
+            return Ok(None);
+        };
+        let share = Share {
+            uuid: Uuid::new_v4().to_string(),
+            name,
+            rel,
+            created_at: now_unix(),
+            expires_at,
+            view_count: 0,
+            max_views,
+        };
+        tx.execute(
+            "INSERT INTO shares (uuid, name, rel, created_at, expires_at, max_views)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                share.uuid,
+                share.name,
+                share.rel,
+                share.created_at as i64,
+                share.expires_at.map(|v| v as i64),
+                share.max_views.map(|v| v as i64),
+            ],
+        )?;
+        tx.execute("DELETE FROM share_views WHERE share_uuid = ?1", rusqlite::params![uuid])?;
+        tx.execute("DELETE FROM shares WHERE uuid = ?1", rusqlite::params![uuid])?;
+        tx.commit()?;
+        Ok(Some(share))
     }
 
     pub async fn purge_expired(&self) -> Result<Vec<String>, rusqlite::Error> {
@@ -209,15 +337,20 @@ impl ShareStore {
         let now = now_unix() as i64;
         let uuids: Vec<String> = {
             let mut stmt = conn.prepare(
-                "SELECT uuid FROM shares WHERE expires_at IS NOT NULL AND expires_at < ?1",
+                "SELECT uuid FROM shares WHERE expires_at IS NOT NULL AND expires_at <= ?1",
             )?;
             let rows = stmt.query_map(rusqlite::params![now], |row| row.get::<_, String>(0))?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
-        conn.execute(
-            "DELETE FROM shares WHERE expires_at IS NOT NULL AND expires_at < ?1",
+        let tx = conn.unchecked_transaction()?;
+        for uuid in &uuids {
+            tx.execute("DELETE FROM share_views WHERE share_uuid = ?1", rusqlite::params![uuid])?;
+        }
+        tx.execute(
+            "DELETE FROM shares WHERE expires_at IS NOT NULL AND expires_at <= ?1",
             rusqlite::params![now],
         )?;
+        tx.commit()?;
         Ok(uuids)
     }
 }
@@ -241,6 +374,8 @@ impl IntoResponse for ApiError {
 pub struct CreateShareRequest {
     pub rel: String,
     pub expires_in: Option<u64>,
+    pub expires_at: Option<u64>,
+    pub max_views: Option<u64>,
 }
 
 pub async fn create_share(
@@ -256,14 +391,23 @@ pub async fn create_share(
         .unwrap_or("shared")
         .to_string();
 
-    let expires_at = req
-        .expires_in
-        .filter(|ttl| *ttl > 0)
-        .map(|ttl| now_unix().saturating_add(ttl));
+    if req.max_views == Some(0) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "max_views must be at least 1".into()));
+    }
+    let expires_at = if let Some(timestamp) = req.expires_at {
+        if timestamp <= now_unix() {
+            return Err(ApiError(StatusCode::BAD_REQUEST, "expiry must be in the future".into()));
+        }
+        Some(timestamp)
+    } else {
+        req.expires_in
+            .filter(|ttl| *ttl > 0)
+            .map(|ttl| now_unix().saturating_add(ttl))
+    };
 
     let share = state
         .share_store
-        .create(&req.rel, &name, expires_at)
+        .create(&req.rel, &name, expires_at, req.max_views)
         .await
         .map_err(ApiError::internal)?;
 
@@ -280,6 +424,32 @@ pub async fn create_share(
         if !already_cached {
             let _ = generate_thumbnail(&abs, &thumb).await;
         }
+    });
+
+    Ok(Json(share.view(&state.public_base_url)))
+}
+
+pub async fn regenerate_share(
+    AxumPath(uuid): AxumPath<String>,
+    State(state): State<AppState>,
+) -> Result<Json<ShareView>, ApiError> {
+    let existing = state.share_store.get(&uuid).await.map_err(ApiError::internal)?
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "share not found".into()))?;
+    if expired(existing.expires_at) {
+        return Err(ApiError(StatusCode::GONE, "share expired".into()));
+    }
+    let abs = resolve_media_path(&state.media_root, &existing.rel)
+        .map_err(|e| ApiError(StatusCode::NOT_FOUND, e.to_string()))?;
+    let share = state.share_store.regenerate(&uuid).await
+        .map_err(ApiError::internal)?
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "share not found".into()))?;
+    remove_thumbnail(&state.thumb_dir, &uuid).await;
+
+    let thumb_dir = state.thumb_dir.clone();
+    let thumbnail_uuid = share.uuid.clone();
+    tokio::spawn(async move {
+        let thumb = thumb_dir.join(thumb_name(&thumbnail_uuid));
+        let _ = generate_thumbnail(&abs, &thumb).await;
     });
 
     Ok(Json(share.view(&state.public_base_url)))
@@ -342,9 +512,38 @@ pub async fn shares_page(State(state): State<AppState>) -> Result<Html<String>, 
     .map_err(ApiError::internal)
 }
 
+fn view_cookie_name(uuid: &str) -> String {
+    format!("mwvr_view_{uuid}")
+}
+
+fn view_cookie_token(headers: &HeaderMap, uuid: &str) -> Option<String> {
+    let name = view_cookie_name(uuid);
+    headers
+        .get(header::COOKIE)?
+        .to_str().ok()?
+        .split(';')
+        .filter_map(|part| part.trim().split_once('='))
+        .find_map(|(key, value)| {
+            if key == name && Uuid::parse_str(value).is_ok() {
+                Some(value.to_string())
+            } else {
+                None
+            }
+        })
+}
+
+async fn session_allowed(share: &Share, headers: &HeaderMap, state: &AppState) -> bool {
+    if share.max_views.is_none() {
+        return true;
+    }
+    let Some(token) = view_cookie_token(headers, &share.uuid) else { return false; };
+    state.share_store.has_view(&share.uuid, &token).await.unwrap_or(false)
+}
+
 pub async fn share_page(
     AxumPath(uuid): AxumPath<String>,
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     let share = state
         .share_store
@@ -357,6 +556,13 @@ pub async fn share_page(
         let _ = state.share_store.delete(&uuid).await;
         remove_thumbnail(&state.thumb_dir, &uuid).await;
         return Err(ApiError(StatusCode::NOT_FOUND, "share expired".into()));
+    }
+
+    let token = view_cookie_token(&headers, &uuid).unwrap_or_else(|| Uuid::new_v4().to_string());
+    let allowed = state.share_store.register_view(&uuid, &token).await
+        .map_err(ApiError::internal)?;
+    if !allowed {
+        return Err(ApiError(StatusCode::GONE, "share view limit reached".into()));
     }
 
     let extension = share
@@ -396,6 +602,13 @@ pub async fn share_page(
         HeaderName::from_static("x-robots-tag"),
         HeaderValue::from_static("noindex, nofollow"),
     );
+    headers.insert(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&format!(
+            "{}={}; HttpOnly; SameSite=Lax; Path=/share/{}",
+            view_cookie_name(&uuid), token, uuid
+        )).unwrap_or_else(|_| HeaderValue::from_static("")),
+    );
 
     Ok((headers, Html(html)).into_response())
 }
@@ -419,6 +632,10 @@ pub async fn share_stream(
             return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
         }
     };
+
+    if !session_allowed(&share, request.headers(), &state).await {
+        return (StatusCode::FORBIDDEN, "open the share page before streaming").into_response();
+    }
 
     let path = match resolve_media_path(&state.media_root, &share.rel) {
         Ok(p) => p,
@@ -457,6 +674,10 @@ pub async fn share_download(
             return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
         }
     };
+
+    if !session_allowed(&share, request.headers(), &state).await {
+        return (StatusCode::FORBIDDEN, "open the share page before downloading").into_response();
+    }
 
     let path = match resolve_media_path(&state.media_root, &share.rel) {
         Ok(p) => p,

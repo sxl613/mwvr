@@ -1,11 +1,175 @@
 use std::cmp::Reverse;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use axum::body::Body;
+use axum::extract::{Path as AxumPath, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
 use serde::Serialize;
+use serde::Deserialize;
+use tokio::process::Command;
+use tower::ServiceExt;
+use tower_http::services::ServeFile;
 use walkdir::WalkDir;
 
-use crate::{ListParams, SortDirection, SortField};
+use crate::{AppState, ListParams, SortDirection, SortField};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MediaMetadata {
+    pub duration_seconds: Option<f64>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub video_codec: Option<String>,
+    pub audio_codec: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CachedMediaMetadata {
+    pub size: u64,
+    pub modified_ns: Option<u128>,
+    pub info: MediaMetadata,
+}
+
+#[derive(Deserialize)]
+struct ProbeOutput {
+    streams: Option<Vec<ProbeStream>>,
+    format: Option<ProbeFormat>,
+}
+
+#[derive(Deserialize)]
+struct ProbeStream {
+    codec_type: Option<String>,
+    codec_name: Option<String>,
+    width: Option<u32>,
+    height: Option<u32>,
+}
+
+#[derive(Deserialize)]
+struct ProbeFormat {
+    duration: Option<String>,
+}
+
+async fn probe_metadata(path: &Path) -> std::io::Result<MediaMetadata> {
+    let output = Command::new("ffprobe")
+        .args([
+            "-v", "error", "-show_entries",
+            "format=duration:stream=codec_type,codec_name,width,height",
+            "-of", "json",
+        ])
+        .arg(path)
+        .output()
+        .await?;
+    if !output.status.success() {
+        return Err(std::io::Error::other("ffprobe could not read this media file"));
+    }
+
+    let probe: ProbeOutput = serde_json::from_slice(&output.stdout)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let streams = probe.streams.unwrap_or_default();
+    let video = streams.iter().find(|s| s.codec_type.as_deref() == Some("video"));
+    let audio = streams.iter().find(|s| s.codec_type.as_deref() == Some("audio"));
+    let duration_seconds = probe
+        .format
+        .and_then(|f| f.duration)
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|d| d.is_finite() && *d > 0.0);
+
+    Ok(MediaMetadata {
+        duration_seconds,
+        width: video.and_then(|s| s.width),
+        height: video.and_then(|s| s.height),
+        video_codec: video.and_then(|s| s.codec_name.clone()),
+        audio_codec: audio.and_then(|s| s.codec_name.clone()),
+    })
+}
+
+fn file_signature(metadata: &std::fs::Metadata) -> (u64, Option<u128>) {
+    let modified_ns = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos());
+    (metadata.len(), modified_ns)
+}
+
+pub async fn media_info(
+    AxumPath(rel): AxumPath<String>,
+    State(state): State<AppState>,
+) -> Result<Json<MediaMetadata>, (StatusCode, String)> {
+    let path = super::media::resolve_media_path(&state.media_root, &rel)
+        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+    let (size, modified_ns) = file_signature(&metadata);
+
+    if let Some(cached) = state.media_metadata.read().await.get(&rel)
+        && cached.size == size && cached.modified_ns == modified_ns
+    {
+        return Ok(Json(cached.info.clone()));
+    }
+
+    let info = probe_metadata(&path)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    state.media_metadata.write().await.insert(
+        rel,
+        CachedMediaMetadata { size, modified_ns, info: info.clone() },
+    );
+    Ok(Json(info))
+}
+
+pub async fn media_thumbnail(
+    AxumPath(rel): AxumPath<String>,
+    State(state): State<AppState>,
+    request: axum::http::Request<Body>,
+) -> Response {
+    let path = match resolve_media_path(&state.media_root, &rel) {
+        Ok(path) => path,
+        Err(error) => return (StatusCode::NOT_FOUND, error.to_string()).into_response(),
+    };
+    let metadata = match tokio::fs::metadata(&path).await {
+        Ok(metadata) => metadata,
+        Err(error) => return (StatusCode::NOT_FOUND, error.to_string()).into_response(),
+    };
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    rel.hash(&mut hasher);
+    let (size, modified_ns) = file_signature(&metadata);
+    size.hash(&mut hasher);
+    modified_ns.hash(&mut hasher);
+    let thumb = state.thumb_dir.join(format!("media-{:016x}.jpg", hasher.finish()));
+    let fresh = match tokio::fs::metadata(&thumb).await {
+        Ok(cached) if cached.len() > 0 => match (metadata.modified(), cached.modified()) {
+            (Ok(source), Ok(cached)) => cached >= source,
+            _ => true,
+        },
+        _ => false,
+    };
+
+    if !fresh {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            crate::share::generate_thumbnail(&path, &thumb),
+        ).await;
+        if !matches!(result, Ok(Ok(()))) {
+            return (StatusCode::BAD_GATEWAY, "thumbnail generation failed").into_response();
+        }
+    }
+
+    match ServeFile::new(thumb).oneshot(request).await {
+        Ok(mut response) => {
+            response.headers_mut().insert(
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("public, max-age=86400"),
+            );
+            response.map(Body::new)
+        }
+        Err(never) => match never {},
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct MediaFile {

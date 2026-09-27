@@ -52,7 +52,31 @@
 
                 const meta = document.createElement('span');
                 meta.className = 'share-meta';
-                meta.textContent = s.expires_at ? 'expires ' + fmt(s.expires_at) : 'never expires';
+                const updateMeta = () => {
+                    const viewLimit = s.max_views == null ? `${s.view_count} views` : `${s.view_count} / ${s.max_views} views`;
+                    const expiry = s.expires_at ? 'expires ' + fmt(s.expires_at) : 'never expires';
+                    meta.textContent = `${viewLimit} · ${expiry}`;
+                };
+                updateMeta();
+
+                const regenerate = document.createElement('button');
+                regenerate.textContent = 'regenerate';
+                regenerate.title = 'Create a new link and invalidate this one';
+                regenerate.addEventListener('click', async () => {
+                    if (!window.confirm('Create a new link for this file and invalidate the current link?')) return;
+                    try {
+                        const response = await fetch('/api/shares/' + s.uuid + '/regenerate', { method: 'POST' });
+                        if (!response.ok) throw new Error(await response.text());
+                        Object.assign(s, await response.json());
+                        url.textContent = s.url;
+                        url.title = s.url;
+                        updateMeta();
+                        regenerate.textContent = 'regenerated';
+                        setTimeout(() => { regenerate.textContent = 'regenerate'; }, 1500);
+                    } catch (_) {
+                        regenerate.textContent = 'failed';
+                    }
+                });
 
                 const copy = document.createElement('button');
                 copy.textContent = 'copy';
@@ -84,7 +108,7 @@
                     }
                 });
 
-                row.append(name, url, meta, copy, revoke);
+                row.append(name, url, meta, regenerate, copy, revoke);
                 list.appendChild(row);
             });
         })();
