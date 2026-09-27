@@ -15,7 +15,7 @@ error() { echo -e "${RED}❌ $1${NC}"; exit 1; }
 
 # Configuration
 REMOTE="${REMOTE:-remote}"
-PROJECT_DIR="/opt/canis"
+PROJECT_DIR="${PROJECT_DIR:-/opt/canis}"
 IMAGES_TAR="canis-images.tar"
 CMD="docker compose -f compose.yml"
 
@@ -126,7 +126,7 @@ REMOTE_SCRIPT=$(cat <<'DEPLOY_EOF'
   fi
 
   echo "📥 Pulling base images (cloudflared)..."
-  $
+  $CMD pull cloudflared
 
   if [ "$USE_LOCAL_IMAGES" = false ]; then
     echo "🔨 Building canis image on remote..."
