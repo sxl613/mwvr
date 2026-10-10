@@ -1,0 +1,163 @@
+<div class="selection-bar" id="selection-bar" hidden>
+  <span id="selection-count"></span>
+  <button class="watch-link" id="selection-add" type="button">add to playlist</button>
+  <button class="watch-link" id="selection-clear" type="button">clear</button>
+</div>
+
+<dialog class="share-dialog" id="playlist-dialog">
+  <form method="dialog" class="share-dialog-head">
+    <span>add to playlist</span>
+    <button value="cancel" aria-label="close">&times;</button>
+  </form>
+  <div class="share-body">
+    <label class="share-label">
+      playlist
+      <select id="playlist-target">
+        <option value="">+ new playlist</option>
+      </select>
+    </label>
+    <label class="share-label" id="playlist-name-row">
+      name
+      <input id="playlist-name" type="text" maxlength="200" placeholder="my playlist">
+    </label>
+    <button class="watch-link" id="playlist-save" type="button">save</button>
+    <div class="share-result" id="playlist-result" hidden>
+      <input id="playlist-url" type="text" readonly />
+      <button class="watch-link" id="playlist-copy" type="button">copy</button>
+    </div>
+    <div class="share-error" id="playlist-error" hidden></div>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  // Selection survives pagination and searches: it lives in localStorage as
+  // an ordered list of rels (paths relative to MEDIA_PATH).
+  const KEY = 'mwvr_selection';
+  const bar = document.getElementById('selection-bar');
+  const countEl = document.getElementById('selection-count');
+  const dialog = document.getElementById('playlist-dialog');
+  const target = document.getElementById('playlist-target');
+  const nameRow = document.getElementById('playlist-name-row');
+  const nameInput = document.getElementById('playlist-name');
+  const saveBtn = document.getElementById('playlist-save');
+  const result = document.getElementById('playlist-result');
+  const urlInput = document.getElementById('playlist-url');
+  const copyBtn = document.getElementById('playlist-copy');
+  const errEl = document.getElementById('playlist-error');
+  const boxes = [...document.querySelectorAll('[data-select-rel]')];
+
+  function load() {
+    try {
+      const value = JSON.parse(localStorage.getItem(KEY) || '[]');
+      return Array.isArray(value) ? value : [];
+    } catch (_) { return []; }
+  }
+  let selection = load();
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(selection)); } catch (_) {}
+    render();
+  }
+
+  function render() {
+    boxes.forEach(box => {
+      box.checked = selection.includes(box.dataset.selectRel);
+      box.closest('.media-card').classList.toggle('is-selected', box.checked);
+    });
+    countEl.textContent = `${selection.length} selected`;
+    bar.hidden = selection.length === 0;
+  }
+
+  boxes.forEach(box => box.addEventListener('change', () => {
+    const rel = box.dataset.selectRel;
+    selection = selection.filter(r => r !== rel);
+    if (box.checked) selection.push(rel);
+    save();
+  }));
+  // Another tab may change the selection too.
+  window.addEventListener('storage', e => {
+    if (e.key === KEY) { selection = load(); render(); }
+  });
+
+  document.getElementById('selection-clear').addEventListener('click', () => {
+    selection = [];
+    save();
+  });
+
+  function showError(message) {
+    errEl.textContent = message;
+    errEl.hidden = false;
+  }
+
+  async function loadPlaylists() {
+    target.length = 1;
+    try {
+      const res = await fetch('/api/playlists');
+      if (!res.ok) return;
+      (await res.json()).forEach(p => {
+        const option = document.createElement('option');
+        option.value = p.uuid;
+        option.textContent = `${p.name} (${p.count})`;
+        target.appendChild(option);
+      });
+    } catch (_) {}
+  }
+
+  target.addEventListener('change', () => { nameRow.hidden = !!target.value; });
+
+  document.getElementById('selection-add').addEventListener('click', () => {
+    result.hidden = true;
+    errEl.hidden = true;
+    nameInput.value = '';
+    target.value = '';
+    nameRow.hidden = false;
+    loadPlaylists();
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    errEl.hidden = true;
+    if (!selection.length) return showError('nothing selected');
+    const existing = target.value;
+    if (!existing && !nameInput.value.trim()) return showError('give the playlist a name');
+    try {
+      const res = existing
+        ? await window.mwvrPlaylistFetch('/playlist/' + existing, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ add: selection }),
+          })
+        : await window.mwvrPlaylistFetch('/api/playlists', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: nameInput.value.trim(), items: selection }),
+          });
+      if (!res) return;
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      urlInput.value = data.url;
+      result.hidden = false;
+      selection = [];
+      save();
+    } catch (e) {
+      showError('failed: ' + e.message);
+    }
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    if (!urlInput.value) return;
+    try {
+      await navigator.clipboard.writeText(urlInput.value);
+      copyBtn.textContent = 'copied';
+      setTimeout(() => { copyBtn.textContent = 'copy'; }, 1500);
+    } catch (_) {
+      urlInput.select();
+      document.execCommand('copy');
+    }
+  });
+
+  render();
+})();
+</script>

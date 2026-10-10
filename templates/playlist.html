@@ -107,6 +107,7 @@
         updatedAt: Date.now(),
       };
       try { localStorage.setItem(playbackKey, JSON.stringify(state)); } catch (_) {}
+      refreshWatched(currentIdx);
     }
 
     // ── Autoplay state ──
@@ -136,6 +137,9 @@
       idxSpan.className = 'idx';
       idxSpan.textContent = idx + 1;
 
+      const mark = document.createElement('span');
+      mark.className = 'watch-mark';
+
       const ext = document.createElement('span');
       ext.className = 'ext-badge';
       ext.textContent = item.e;
@@ -148,7 +152,7 @@
       size.className = 'item-size';
       size.textContent = formatSize(item.s);
 
-      li.append(idxSpan, ext, name, size);
+      li.append(idxSpan, mark, ext, name, size);
       li.addEventListener('click', () => loadVideo(idx));
       return li;
     }
@@ -165,6 +169,24 @@
       playlistEl.appendChild(fragment);
       playlistMobile.appendChild(fragmentM);
       updateCounts();
+      refreshWatched();
+    }
+
+    // Mark watched / partially watched items from localStorage. With an index,
+    // only that item is refreshed (the library playlist can be long).
+    function refreshWatched(only) {
+      const selector = only === undefined ? '.playlist-item' : `.playlist-item[data-index="${only}"]`;
+      [playlistEl, playlistMobile].forEach(el => {
+        el.querySelectorAll(selector).forEach(li => {
+          const item = playlistData[+li.dataset.index];
+          const saved = item && readPlayback('mwvr_playback:' + item.r);
+          const watched = !!(saved && saved.watched);
+          const pct = saved && saved.duration > 0
+            ? Math.round(Math.min(1, saved.position / saved.duration) * 100) : 0;
+          li.classList.toggle('watched', watched);
+          li.querySelector('.watch-mark').textContent = watched ? '✓' : (pct > 2 ? pct + '%' : '');
+        });
+      });
     }
 
     function formatSize(bytes) {

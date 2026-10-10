@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="referrer" content="no-referrer" />
+  <meta property="og:title" content="{{ name }}" />
+  <meta property="og:description" content="Playlist · {{ count }} videos · shared via mwvr" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="{{ page_url }}" />
+  {% if !thumbnail_url.is_empty() %}
+  <meta property="og:image" content="{{ thumbnail_url }}" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta name="twitter:image" content="{{ thumbnail_url }}" />
+  {% endif %}
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{{ name }}" />
+  <title>{{ name }}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
+  {% include "theme_head.html" %}
+  {{ analytics_tag|safe }}
+</head>
+<body class="page-playlist page-playlist-share">
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span class="playlist-title" id="playlist-title">{{ name }}</span>
+      <span class="count" id="sidebar-count"></span>
+    </div>
+    <div class="sidebar-header">
+      <label class="autoplay-label">
+        <input type="checkbox" id="autoplay-toggle">
+        autoplay
+      </label>
+      <span class="count" id="watched-count"></span>
+      {% if editing_enabled %}
+      <button class="back-link" id="edit-toggle" type="button">edit</button>
+      {% endif %}
+      <button class="back-link close-overlay" id="close-overlay" type="button">close</button>
+    </div>
+
+    {% if editing_enabled %}
+    <div class="edit-panel" id="edit-panel" hidden>
+      <form class="edit-row" id="rename-form">
+        <input id="rename-input" type="text" maxlength="200" aria-label="playlist name" value="{{ name }}">
+        <button class="back-link" type="submit">rename</button>
+      </form>
+      <form class="edit-row" id="library-form">
+        <input id="library-query" type="search" placeholder="search library to add…" aria-label="search library">
+        <button class="back-link" type="submit">search</button>
+      </form>
+      <ul class="library-results" id="library-results"></ul>
+      <div class="edit-row">
+        <span class="edit-status" id="edit-status" aria-live="polite"></span>
+        <button class="back-link" id="edit-lock" type="button">lock</button>
+      </div>
+    </div>
+    {% endif %}
+
+    <ul class="playlist" id="playlist"></ul>
+  </aside>
+
+  <main class="player-area">
+    <div class="player-head">
+      <div class="current-title" id="current-title"></div>
+      <div class="download-wrap">
+        <a class="download-btn" id="download-current" href="#" download>download</a>
+        <button class="download-btn download-caret" id="download-caret" type="button"
+                aria-haspopup="menu" aria-expanded="false" aria-label="download options">&#9662;</button>
+        <ul class="download-menu" id="download-menu" role="menu" hidden>
+          <li><a id="download-original" href="#" download>download original</a></li>
+          <li id="convert-item" hidden>
+            <a id="download-mp4" href="#" download>convert to mp4</a>
+          </li>
+        </ul>
+      </div>
+      {% include "theme_select.html" %}
+    </div>
+    <video id="player" preload="metadata" controls playsinline>
+      <source src="" type="">
+    </video>
+    <p class="empty-note" id="empty-note" hidden>this playlist is empty.</p>
+  </main>
+</div>
+
+<button class="toggle-playlist" id="toggle-playlist" title="playlist">☰</button>
+
+<script id="playlist-data" type="application/json">{{ items_json|safe }}</script>
+
+<script>
+  (() => {
+    const uuid = {{ uuid|json|safe }};
+    const base = '/playlist/' + uuid;
+    let items = JSON.parse(document.getElementById('playlist-data').textContent);
+    let currentIdx = 0;
+    let editing = false;
+
+    const player = document.getElementById('player');
+    const currentTitle = document.getElementById('current-title');
+    const playlistEl = document.getElementById('playlist');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarCount = document.getElementById('sidebar-count');
+    const watchedCount = document.getElementById('watched-count');
+    const autoplayToggle = document.getElementById('autoplay-toggle');
+    const emptyNote = document.getElementById('empty-note');
+    let playbackKey = null;
+    let lastSavedSecond = -1;
+
+    const encodePath = rel => rel.split('/').map(encodeURIComponent).join('/');
+
+    // ── Watch tracking (localStorage; same keys as the library pages) ──
+    function readPlayback(rel) {
+      try { return JSON.parse(localStorage.getItem('mwvr_playback:' + rel) || 'null'); } catch (_) { return null; }
+    }
+
+    function savePlayback(watched = false) {
+      if (!playbackKey || !Number.isFinite(player.duration) || player.duration <= 0) return;
+      const position = Math.max(0, player.currentTime || 0);
+      let old = null;
+      try { old = JSON.parse(localStorage.getItem(playbackKey) || 'null'); } catch (_) {}
+      const state = {
+        position,
+        duration: player.duration,
+        watched: watched || !!(old && old.watched && position >= player.duration * 0.9),
+        updatedAt: Date.now(),
+      };
+      try { localStorage.setItem(playbackKey, JSON.stringify(state)); } catch (_) {}
+      refreshWatched();
+    }
+
+    function setWatched(rel, watched) {
+      const saved = readPlayback(rel) || { position: 0, duration: 0 };
+      saved.watched = watched;
+      if (!watched) saved.position = 0;
+      saved.updatedAt = Date.now();
+      try { localStorage.setItem('mwvr_playback:' + rel, JSON.stringify(saved)); } catch (_) {}
+      refreshWatched();
+    }
+
+    function watchState(rel) {
+      const saved = readPlayback(rel);
+      if (!saved) return { watched: false, pct: 0 };
+      const pct = saved.duration > 0 ? Math.round(saved.position / saved.duration * 100) : 0;
+      return { watched: !!saved.watched, pct: Math.max(0, Math.min(100, pct)) };
+    }
+
+    function refreshWatched() {
+      let done = 0;
+      playlistEl.querySelectorAll('.playlist-item').forEach(li => {
+        const item = items[+li.dataset.index];
+        if (!item) return;
+        const { watched, pct } = watchState(item.r);
+        if (watched) done++;
+        li.classList.toggle('watched', watched);
+        const mark = li.querySelector('.watch-mark');
+        mark.textContent = watched ? '✓' : (pct > 2 ? pct + '%' : '');
+        mark.title = watched ? 'watched — click to mark unwatched' : 'click to mark watched';
+      });
+      watchedCount.textContent = items.length ? `${done}/${items.length} watched` : '';
+    }
+
+    // Another tab (or the library page) may update watch state.
+    window.addEventListener('storage', e => {
+      if (e.key && e.key.startsWith('mwvr_playback:')) refreshWatched();
+    });
+
+    // ── Autoplay ──
+    let autoplay = localStorage.getItem('mwvr_autoplay') === 'true';
+    autoplayToggle.checked = autoplay;
+    autoplayToggle.addEventListener('change', () => {
+      autoplay = autoplayToggle.checked;
+      localStorage.setItem('mwvr_autoplay', autoplay);
+    });
+
+    // ── Playlist DOM ──
+    function formatSize(bytes) {
+      if (!bytes) return '';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let size = bytes, unitIdx = 0;
+      while (size >= 1024 && unitIdx < units.length - 1) { size /= 1024; unitIdx++; }
+      return `${size.toFixed(1)} ${units[unitIdx]}`;
+    }
+
+    function smallButton(label, title, onClick) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'item-btn';
+      b.textContent = label;
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+      return b;
+    }
+
+    function buildItem(item, idx) {
+      const li = document.createElement('li');
+      li.className = 'playlist-item';
+      if (idx === currentIdx) li.classList.add('active');
+      if (item.m) li.classList.add('missing');
+      li.dataset.index = idx;
+
+      const idxSpan = document.createElement('span');
+      idxSpan.className = 'idx';
+      idxSpan.textContent = idx + 1;
+
+      const mark = document.createElement('button');
+      mark.type = 'button';
+      mark.className = 'watch-mark';
+      mark.addEventListener('click', e => {
+        e.stopPropagation();
+        setWatched(item.r, !watchState(item.r).watched);
+      });
+
+      const ext = document.createElement('span');
+      ext.className = 'ext-badge';
+      ext.textContent = item.e;
+
+      const name = document.createElement('span');
+      name.className = 'item-name';
+      name.textContent = item.n;
+      name.title = item.m ? item.n + ' (missing)' : item.n;
+
+      li.append(idxSpan, mark, ext, name);
+      if (editing) {
+        li.append(
+          smallButton('↑', 'move up', () => move(idx, -1)),
+          smallButton('↓', 'move down', () => move(idx, 1)),
+          smallButton('×', 'remove from playlist', () => removeItem(idx)),
+        );
+      } else {
+        const size = document.createElement('span');
+        size.className = 'item-size';
+        size.textContent = item.m ? 'missing' : formatSize(item.s);
+        li.append(size);
+      }
+      li.addEventListener('click', () => {
+        loadVideo(idx);
+        player.play().catch(() => {});
+        if (window.innerWidth <= 750) sidebar.classList.remove('visible');
+      });
+      return li;
+    }
+
+    function renderPlaylist() {
+      playlistEl.innerHTML = '';
+      const fragment = document.createDocumentFragment();
+      items.forEach((item, idx) => fragment.appendChild(buildItem(item, idx)));
+      playlistEl.appendChild(fragment);
+      updateCounts();
+      refreshWatched();
+      const empty = items.length === 0;
+      emptyNote.hidden = !empty;
+      player.hidden = empty;
+      if (empty) player.pause();
+    }
+
+    function updateCounts() {
+      sidebarCount.textContent = items.length ? `${currentIdx + 1} / ${items.length}` : '0 videos';
+    }
+
+    // ── Video loading ──
+    function loadVideo(idx) {
+      if (idx < 0 || idx >= items.length) return;
+      currentIdx = idx;
+      const item = items[idx];
+      playbackKey = 'mwvr_playback:' + item.r;
+      const itemRel = item.r;
+      lastSavedSecond = -1;
+
+      let source = player.querySelector('source');
+      if (!source) {
+        source = document.createElement('source');
+        player.appendChild(source);
+      }
+      source.src = base + '/stream/' + encodePath(item.r);
+      source.type = ['mkv', 'avi', 'mov'].includes(item.e.toLowerCase()) ? 'video/mp4' : 'video/' + item.e;
+      player.load();
+
+      player.addEventListener('loadedmetadata', function restorePosition() {
+        player.removeEventListener('loadedmetadata', restorePosition);
+        const saved = readPlayback(itemRel);
+        if (saved && !saved.watched && Number.isFinite(saved.position) &&
+            saved.position > 10 && saved.position < player.duration - 10) {
+          player.currentTime = saved.position;
+        }
+      });
+
+      const dl = base + '/download/' + encodePath(item.r);
+      for (const id of ['download-current', 'download-original']) {
+        const link = document.getElementById(id);
+        link.href = dl;
+        link.setAttribute('download', item.n);
+      }
+      const convertItem = document.getElementById('convert-item');
+      const mp4Link = document.getElementById('download-mp4');
+      convertItem.hidden = item.e.toLowerCase() !== 'webm';
+      if (!convertItem.hidden) {
+        mp4Link.href = dl + '?format=mp4';
+        mp4Link.setAttribute('download', item.n.replace(/\.webm$/i, '.mp4'));
+      } else {
+        closeDownloadMenu();
+      }
+
+      document.title = item.n;
+      currentTitle.textContent = item.n;
+      updateCounts();
+
+      playlistEl.querySelectorAll('.playlist-item').forEach(li => {
+        li.classList.toggle('active', +li.dataset.index === idx);
+      });
+      const active = playlistEl.querySelector('.playlist-item.active');
+      if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+      const url = new URL(window.location);
+      url.searchParams.set('video', item.r);
+      history.replaceState(null, '', url);
+    }
+
+    function next() {
+      if (currentIdx < items.length - 1) { loadVideo(currentIdx + 1); player.play().catch(() => {}); }
+    }
+    function prev() {
+      if (currentIdx > 0) { loadVideo(currentIdx - 1); player.play().catch(() => {}); }
+    }
+
+    player.addEventListener('timeupdate', () => {
+      const second = Math.floor(player.currentTime || 0);
+      if (second !== lastSavedSecond && second % 5 === 0) {
+        lastSavedSecond = second;
+        savePlayback();
+      }
+    });
+    player.addEventListener('pause', () => savePlayback());
+    player.addEventListener('ended', () => {
+      savePlayback(true);
+      if (autoplay) next();
+    });
+
+    // ── Keyboard shortcuts (same as the library player) ──
+    document.addEventListener('keydown', e => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+      if (document.querySelector('dialog[open]')) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === ' ' || e.key === 'k') { e.preventDefault(); player.paused ? player.play() : player.pause(); }
+      if (e.key === 'j') { e.preventDefault(); player.currentTime -= 10; }
+      if (e.key === 'l') { e.preventDefault(); player.currentTime += 10; }
+      if (e.key === 'f') {
+        e.preventDefault();
+        document.fullscreenElement ? document.exitFullscreen() : player.requestFullscreen();
+      }
+      if (e.key === 'ArrowLeft' || e.key === '<' || e.key === 'p') { e.preventDefault(); prev(); }
+      if (e.key === 'ArrowRight' || e.key === '>' || e.key === 'n') { e.preventDefault(); next(); }
+      if (e.key === 'a') {
+        e.preventDefault();
+        autoplay = !autoplay;
+        autoplayToggle.checked = autoplay;
+        localStorage.setItem('mwvr_autoplay', autoplay);
+      }
+    });
+
+    // ── Mobile: sidebar doubles as a full-screen overlay ──
+    document.getElementById('toggle-playlist').addEventListener('click', () => {
+      sidebar.classList.add('visible');
+      const active = playlistEl.querySelector('.playlist-item.active');
+      if (active) active.scrollIntoView({ block: 'center' });
+    });
+    document.getElementById('close-overlay').addEventListener('click', () => {
+      sidebar.classList.remove('visible');
+    });
+
+    let touchStartX = 0, touchStartY = 0;
+    player.addEventListener('touchstart', e => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    player.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 60) dx < 0 ? next() : prev();
+    });
+
+    // ── Download dropdown ──
+    const downloadCaret = document.getElementById('download-caret');
+    const downloadMenu = document.getElementById('download-menu');
+    function closeDownloadMenu() {
+      downloadMenu.hidden = true;
+      downloadCaret.setAttribute('aria-expanded', 'false');
+    }
+    downloadCaret.addEventListener('click', e => {
+      e.stopPropagation();
+      const willOpen = downloadMenu.hidden;
+      downloadMenu.hidden = !willOpen;
+      downloadCaret.setAttribute('aria-expanded', willOpen);
+    });
+    document.addEventListener('click', e => {
+      if (!downloadMenu.hidden && !e.target.closest('.download-wrap')) closeDownloadMenu();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !downloadMenu.hidden) closeDownloadMenu();
+    });
+    downloadMenu.addEventListener('click', closeDownloadMenu);
+
+    // ── Editing (every request is password-checked server-side) ──
+    const editToggle = document.getElementById('edit-toggle');
+    const editPanel = document.getElementById('edit-panel');
+    const editStatus = document.getElementById('edit-status');
+
+    function status(message) {
+      if (editStatus) editStatus.textContent = message;
+    }
+
+    // Send an edit; on success adopt the server's item order, keeping the
+    // currently playing video selected.
+    async function applyEdit(body) {
+      status('saving…');
+      try {
+        const res = await window.mwvrPlaylistFetch(base, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res) { status('cancelled'); return null; }
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        status('saved');
+        return data;
+      } catch (e) {
+        status('failed: ' + e.message);
+        return null;
+      }
+    }
+
+    function syncOrder(rels, extra = []) {
+      const playing = items[currentIdx] && items[currentIdx].r;
+      const known = new Map(items.concat(extra).map(item => [item.r, item]));
+      items = rels.map(rel => known.get(rel) || {
+        n: rel.split('/').pop(), r: rel, e: (rel.split('.').pop() || '').toLowerCase(), s: 0, m: false,
+      });
+      const idx = items.findIndex(item => item.r === playing);
+      const hadVideo = !!playing;
+      currentIdx = idx >= 0 ? idx : Math.min(currentIdx, Math.max(items.length - 1, 0));
+      renderPlaylist();
+      if (idx < 0 && items.length && hadVideo) loadVideo(currentIdx);
+      if (!hadVideo && items.length) loadVideo(0);
+    }
+
+    async function move(idx, delta) {
+      const to = idx + delta;
+      if (to < 0 || to >= items.length) return;
+      const rels = items.map(item => item.r);
+      [rels[idx], rels[to]] = [rels[to], rels[idx]];
+      const data = await applyEdit({ items: rels });
+      if (data) syncOrder(data.items);
+    }
+
+    async function removeItem(idx) {
+      const item = items[idx];
+      if (!item) return;
+      const data = await applyEdit({ remove: [item.r] });
+      if (data) syncOrder(data.items);
+    }
+
+    function setEditing(on) {
+      editing = on;
+      editPanel.hidden = !on;
+      editToggle.textContent = on ? 'done' : 'edit';
+      sidebar.classList.toggle('editing', on);
+      renderPlaylist();
+    }
+
+    if (editToggle) {
+      editToggle.addEventListener('click', async () => {
+        if (editing) return setEditing(false);
+        // Verify the passphrase up front so edit mode only opens when it works.
+        const res = await window.mwvrPlaylistFetch(base + '/unlock', { method: 'POST' });
+        if (!res) return;
+        if (!res.ok) { status(await res.text()); return; }
+        setEditing(true);
+        status('');
+      });
+
+      document.getElementById('edit-lock').addEventListener('click', () => {
+        window.mwvrPlaylistLock();
+        setEditing(false);
+      });
+
+      document.getElementById('rename-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const name = document.getElementById('rename-input').value.trim();
+        if (!name) return status('name must not be empty');
+        const data = await applyEdit({ name });
+        if (data) document.getElementById('playlist-title').textContent = data.name;
+      });
+
+      const results = document.getElementById('library-results');
+      document.getElementById('library-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const query = document.getElementById('library-query').value;
+        status('searching…');
+        let found;
+        try {
+          const res = await window.mwvrPlaylistFetch(base + '/library?query=' + encodeURIComponent(query));
+          if (!res) return status('cancelled');
+          if (!res.ok) throw new Error(await res.text());
+          found = await res.json();
+        } catch (err) {
+          return status('failed: ' + err.message);
+        }
+        status(found.length ? `${found.length} results` : 'no matches');
+        results.innerHTML = '';
+        found.forEach(item => {
+          const li = document.createElement('li');
+          const { watched } = watchState(item.r);
+          if (watched) li.classList.add('watched');
+          const name = document.createElement('span');
+          name.className = 'item-name';
+          name.textContent = (watched ? '✓ ' : '') + item.n;
+          name.title = item.r;
+          const inList = items.some(existing => existing.r === item.r);
+          const add = document.createElement('button');
+          add.type = 'button';
+          add.className = 'back-link';
+          add.textContent = inList ? 'added' : 'add';
+          add.disabled = inList;
+          add.addEventListener('click', async () => {
+            add.disabled = true;
+            const data = await applyEdit({ add: [item.r] });
+            if (data) {
+              syncOrder(data.items, [{ ...item, m: false }]);
+              add.textContent = 'added';
+            } else {
+              add.disabled = false;
+            }
+          });
+          li.append(name, add);
+          results.appendChild(li);
+        });
+      });
+    }
+
+    // ── Init ──
+    renderPlaylist();
+    const wanted = new URLSearchParams(window.location.search).get('video');
+    const startIdx = wanted ? items.findIndex(item => item.r === wanted) : -1;
+    if (items.length) loadVideo(startIdx >= 0 ? startIdx : 0);
+  })();
+</script>
+
+{% include "theme.js" %}
+{% if editing_enabled %}
+{% include "playlist_auth.html" %}
+{% endif %}
+</body>
+</html>

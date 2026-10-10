@@ -1,5 +1,6 @@
 mod download;
 mod media;
+mod playlist;
 mod share;
 mod templates;
 use askama::Template;
@@ -10,13 +11,18 @@ use axum::{
     Router,
     http::StatusCode,
     response::Html,
-    routing::{delete, get},
+    routing::{delete, get, post},
 };
 use download::{download_media, play_media};
 use serde::Deserialize;
 use share::{
     create_share, delete_share, list_shares, regenerate_share, share_download, share_page,
     share_stream, share_thumbnail, shares_page,
+};
+use playlist::{
+    create_playlist, delete_playlist, list_playlists, playlist_download, playlist_library,
+    playlist_page, playlist_stream, playlist_thumbnail, playlists_page, unlock_playlist,
+    update_playlist,
 };
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 use templates::{IndexTemplate, PlaylistTemplate};
@@ -111,6 +117,9 @@ struct AppState {
     auth_cookie_name: Option<String>,
     auth_cookie_value: Option<String>,
     share_store: share::ShareStore,
+    playlist_store: playlist::PlaylistStore,
+    // Passphrase gating every playlist mutation; `None` disables editing.
+    playlist_password: Option<String>,
     media_root: PathBuf,
     public_base_url: String,
     thumb_dir: PathBuf,
@@ -141,6 +150,9 @@ async fn main() {
     // Optional HTML snippet (e.g. an analytics script) injected at the end of
     // <head> on every page. Unset/empty to disable.
     let analytics_tag = std::env::var("ANALYTICS_TAG").unwrap_or_default();
+    let playlist_password = std::env::var("PLAYLIST_PASSWORD")
+        .ok()
+        .filter(|p| !p.trim().is_empty());
 
     // Build initial file index
     let index = media::build_index(&PathBuf::from(&media_path));
@@ -161,6 +173,9 @@ async fn main() {
     let share_store = share::ShareStore::open(PathBuf::from(&share_db_path).as_path())
         .await
         .expect("Failed to open share database");
+    let playlist_store = playlist::PlaylistStore::open(PathBuf::from(&share_db_path).as_path())
+        .await
+        .expect("Failed to open playlist database");
 
     tokio::fs::create_dir_all(&thumb_dir)
         .await
@@ -188,6 +203,8 @@ async fn main() {
         auth_cookie_value,
         auth_cookie_name,
         share_store,
+        playlist_store,
+        playlist_password,
         media_root: PathBuf::from(&media_path),
         public_base_url,
         thumb_dir,
@@ -207,7 +224,9 @@ async fn main() {
         .route("/shares", get(shares_page))
         .route("/api/shares", get(list_shares).post(create_share))
         .route("/api/shares/{uuid}", delete(delete_share))
-        .route("/api/shares/{uuid}/regenerate", axum::routing::post(regenerate_share))
+        .route("/api/shares/{uuid}/regenerate", post(regenerate_share))
+        .route("/playlists", get(playlists_page))
+        .route("/api/playlists", get(list_playlists).post(create_playlist))
         .nest_service("/media", ServeDir::new(media_path))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -219,7 +238,18 @@ async fn main() {
         .route("/share/{uuid}", get(share_page))
         .route("/share/{uuid}/stream", get(share_stream))
         .route("/share/{uuid}/thumbnail", get(share_thumbnail))
-        .route("/share/{uuid}/download", get(share_download));
+        .route("/share/{uuid}/download", get(share_download))
+        // Shared playlists: viewing is UUID-gated like shares; every
+        // mutation additionally checks PLAYLIST_PASSWORD.
+        .route(
+            "/playlist/{uuid}",
+            get(playlist_page).put(update_playlist).delete(delete_playlist),
+        )
+        .route("/playlist/{uuid}/unlock", post(unlock_playlist))
+        .route("/playlist/{uuid}/library", get(playlist_library))
+        .route("/playlist/{uuid}/stream/{*rel}", get(playlist_stream))
+        .route("/playlist/{uuid}/thumbnail/{*rel}", get(playlist_thumbnail))
+        .route("/playlist/{uuid}/download/{*rel}", get(playlist_download));
 
     let app = private.merge(public).with_state(state);
 

@@ -22,6 +22,8 @@ services:
       THUMB_DIR: /data/thumbs
       # Optional HTML snippet injected at the end of <head> on every page (e.g. analytics).
       ANALYTICS_TAG: ${ANALYTICS_TAG:-}
+      # Passphrase gating playlist edits; empty = playlists are read-only.
+      PLAYLIST_PASSWORD: ${PLAYLIST_PASSWORD:-}
     volumes:
       - ${MEDIA_HOST_PATH:?set MEDIA_HOST_PATH in .env}:/webm:ro   # e.g. /video
       - canis-data:/data

@@ -50,6 +50,15 @@ Everything is environment variables:
 | `SHARE_DB_PATH` | `./shares.db` | SQLite share database |
 | `THUMB_DIR` | `./thumbs` | share thumbnail cache |
 | `ANALYTICS_TAG` | empty | optional HTML snippet for `<head>` |
+| `PLAYLIST_PASSWORD` | unset | passphrase required to create/edit/delete playlists; unset disables editing |
+
+## Playlists
+
+Tick **select** on any cards in the library (the selection survives paging and searching), then hit **add to playlist** in the bar at the bottom to create a new playlist or append to an existing one. Each playlist gets a public link at `/playlist/<uuid>`, which works like a share link: anyone with it can watch and download the videos in it, and nothing else in the library.
+
+Every change to a playlist needs `PLAYLIST_PASSWORD`: creating, renaming, reordering, adding or removing videos, and deleting. On the playlist page, **edit** asks for the passphrase once per tab, then lets you search the library to add videos, reorder and remove them, or rename the playlist. `/playlists` lists all playlists.
+
+Watch progress is kept in the browser's localStorage. Watched videos are marked in the library grid and in both players' sidebars, and partly watched ones show a percentage. Click the mark on a shared playlist page to toggle it.
 
 ## Deployment
 

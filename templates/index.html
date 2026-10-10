@@ -14,6 +14,7 @@
         <h1 class="site-head">
             <a href="/">mwvr</a>
             <span class="site-head-right">
+                <a class="site-nav" href="/playlists">playlists</a>
                 <a class="site-nav" href="/shares">shares</a>
                 {% include "theme_select.html" %}
             </span>
@@ -126,6 +127,9 @@
                             <div class="watch-progress-fill" data-progress-fill></div>
                         </div>
                         <button class="watch-link share-btn" type="button" data-share-rel="{{ file.rel }}">share</button>
+                        <label class="select-toggle">
+                            <input type="checkbox" data-select-rel="{{ file.rel }}"> select
+                        </label>
                     </div>
                 </div>
                 {% endfor %}
@@ -165,6 +169,7 @@
             const watchLink = card.querySelector('[data-watch-link]');
             const watched = !!saved.watched;
             if (watched) {
+                card.classList.add('is-watched');
                 card.querySelector('[data-watched]').hidden = false;
                 watchLink.textContent = 'watch again';
             } else if (saved.position > 10) {
@@ -236,5 +241,7 @@
     </script>
     {% include "theme.js" %}
     {% include "share_ui.html" %}
+    {% include "playlist_auth.html" %}
+    {% include "playlist_picker.html" %}
 </body>
 </html>

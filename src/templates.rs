@@ -42,3 +42,24 @@ pub struct SharesTemplate {
     pub shares_json: String,
     pub analytics_tag: String,
 }
+
+#[derive(Template)]
+#[template(path = "playlist_share.html")]
+pub struct PlaylistShareTemplate {
+    pub uuid: String,
+    pub name: String,
+    pub count: usize,
+    pub page_url: String,
+    pub thumbnail_url: String,
+    pub items_json: String,
+    pub editing_enabled: bool,
+    pub analytics_tag: String,
+}
+
+#[derive(Template)]
+#[template(path = "playlists.html")]
+pub struct PlaylistsTemplate {
+    pub playlists_json: String,
+    pub editing_enabled: bool,
+    pub analytics_tag: String,
+}
