@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
+    <title>mwvr / playlists</title>
+    {% include "theme_head.html" %}
+    {{ analytics_tag|safe }}
+</head>
+<body class="page-shares">
+    <div class="container">
+        <h1 class="site-head">
+            <span><a href="/">mwvr</a> / playlists</span>
+            {% include "theme_select.html" %}
+        </h1>
+        <a class="back-link" href="/">&larr; list</a>
+        {% if !editing_enabled %}
+        <p>editing is disabled: set <code>PLAYLIST_PASSWORD</code> to create or change playlists.</p>
+        {% endif %}
+        <p>select videos on the list page, then use &ldquo;add to playlist&rdquo;.</p>
+        <div id="playlist-list"></div>
+    </div>
+    <script id="playlists-data" type="application/json">{{ playlists_json|safe }}</script>
+    <script>
+        (() => {
+            const playlists = JSON.parse(document.getElementById('playlists-data').textContent);
+            const list = document.getElementById('playlist-list');
+
+            function showEmpty() {
+                const p = document.createElement('p');
+                p.textContent = 'no playlists yet.';
+                list.appendChild(p);
+            }
+
+            if (!playlists.length) return showEmpty();
+
+            playlists.forEach(pl => {
+                const row = document.createElement('div');
+                row.className = 'share-row';
+
+                const name = document.createElement('a');
+                name.className = 'share-name';
+                name.textContent = pl.name;
+                name.title = pl.name;
+                name.href = '/playlist/' + pl.uuid;
+
+                const url = document.createElement('code');
+                url.className = 'share-url';
+                url.textContent = pl.url;
+                url.title = pl.url;
+
+                const meta = document.createElement('span');
+                meta.className = 'share-meta';
+                meta.textContent = `${pl.count} videos · updated ${new Date(pl.updated_at * 1000).toLocaleString()}`;
+
+                const copy = document.createElement('button');
+                copy.textContent = 'copy';
+                copy.addEventListener('click', async () => {
+                    try {
+                        await navigator.clipboard.writeText(pl.url);
+                        copy.textContent = 'copied';
+                        setTimeout(() => { copy.textContent = 'copy'; }, 1500);
+                    } catch (_) {
+                        copy.textContent = 'copy failed';
+                    }
+                });
+
+                const remove = document.createElement('button');
+                remove.textContent = 'delete';
+                remove.className = 'revoke';
+                remove.addEventListener('click', async () => {
+                    if (!window.confirm(`Delete playlist "${pl.name}"? Its link will stop working.`)) return;
+                    try {
+                        const res = await window.mwvrPlaylistFetch('/playlist/' + pl.uuid, { method: 'DELETE' });
+                        if (!res) return;
+                        if (!res.ok) throw new Error(await res.text());
+                        row.remove();
+                        if (!list.children.length) showEmpty();
+                    } catch (_) {
+                        remove.textContent = 'failed';
+                    }
+                });
+
+                row.append(name, url, meta, copy, remove);
+                list.appendChild(row);
+            });
+        })();
+    </script>
+{% include "theme.js" %}
+{% include "playlist_auth.html" %}
+</body>
+</html>

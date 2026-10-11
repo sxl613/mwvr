@@ -127,7 +127,16 @@ pub async fn media_thumbnail(
     State(state): State<AppState>,
     request: axum::http::Request<Body>,
 ) -> Response {
-    let path = match resolve_media_path(&state.media_root, &rel) {
+    serve_media_thumbnail(&state, &rel, request).await
+}
+
+/// Generate (or reuse a cached) poster frame for `rel` and serve it.
+pub async fn serve_media_thumbnail(
+    state: &AppState,
+    rel: &str,
+    request: axum::http::Request<Body>,
+) -> Response {
+    let path = match resolve_media_path(&state.media_root, rel) {
         Ok(path) => path,
         Err(error) => return (StatusCode::NOT_FOUND, error.to_string()).into_response(),
     };

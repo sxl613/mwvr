@@ -1,0 +1,83 @@
+<dialog class="share-dialog" id="playlist-auth-dialog">
+  <form method="dialog" class="share-dialog-head">
+    <span>playlist password</span>
+    <button value="cancel" aria-label="close">&times;</button>
+  </form>
+  <form class="share-body" id="playlist-auth-form">
+    <label class="share-label">
+      passphrase
+      <input id="playlist-auth-input" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="watch-link" type="submit">unlock</button>
+    <div class="share-error" id="playlist-auth-error" hidden></div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  // The passphrase is remembered for this tab only (sessionStorage) and sent
+  // as a header on every playlist mutation; the server re-checks it each time.
+  const KEY = 'mwvr_playlist_password';
+  const dialog = document.getElementById('playlist-auth-dialog');
+  const form = document.getElementById('playlist-auth-form');
+  const input = document.getElementById('playlist-auth-input');
+  const errEl = document.getElementById('playlist-auth-error');
+  let pending = null;
+
+  function stored() {
+    try { return sessionStorage.getItem(KEY); } catch (_) { return null; }
+  }
+  function remember(value) {
+    try {
+      if (value) sessionStorage.setItem(KEY, value);
+      else sessionStorage.removeItem(KEY);
+    } catch (_) {}
+  }
+
+  function ask(message) {
+    input.value = '';
+    errEl.textContent = message || '';
+    errEl.hidden = !message;
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+    input.focus();
+    return new Promise(resolve => { pending = resolve; });
+  }
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const value = input.value;
+    dialog.close();
+    if (pending) { pending(value); pending = null; }
+  });
+  dialog.addEventListener('close', () => {
+    if (pending) { pending(null); pending = null; }
+  });
+
+  // fetch() wrapper: attaches the passphrase, prompting for it when missing
+  // or rejected. Resolves to the Response, or null if the user cancelled.
+  async function playlistFetch(url, options = {}) {
+    let password = stored();
+    let message = '';
+    for (;;) {
+      if (!password) {
+        password = await ask(message);
+        if (!password) return null;
+      }
+      const headers = Object.assign({}, options.headers, { 'X-Playlist-Password': password });
+      const res = await fetch(url, Object.assign({}, options, { headers }));
+      if (res.status !== 401) {
+        if (res.ok) remember(password);
+        return res;
+      }
+      remember(null);
+      password = null;
+      message = 'wrong password, try again';
+    }
+  }
+
+  window.mwvrPlaylistFetch = playlistFetch;
+  window.mwvrPlaylistUnlocked = () => !!stored();
+  window.mwvrPlaylistLock = () => remember(null);
+})();
+</script>

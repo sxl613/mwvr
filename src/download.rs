@@ -180,7 +180,12 @@ pub(crate) async fn play_media(
         Ok(p) => p,
         Err(e) => return (StatusCode::NOT_FOUND, e.to_string()).into_response(),
     };
+    serve_playable(path, request).await
+}
 
+/// Serve a resolved media file for inline playback, transcoding containers
+/// browsers can't play natively. Shared by the private and playlist routes.
+pub(crate) async fn serve_playable(path: PathBuf, request: Request<Body>) -> Response {
     let extension = path
         .extension()
         .and_then(|value| value.to_str())
