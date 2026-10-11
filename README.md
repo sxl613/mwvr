@@ -54,7 +54,7 @@ Everything is environment variables:
 
 ## Playlists
 
-Tick **select** on any cards in the library (the selection survives paging and searching), then hit **add to playlist** in the bar at the bottom to create a new playlist or append to an existing one. Each playlist gets a public link at `/playlist/<uuid>`, which works like a share link: anyone with it can watch and download the videos in it, and nothing else in the library.
+Tick **select** on any cards in the library (the selection survives paging and searching), then hit **add to playlist** in the bar at the bottom to create a new playlist or append to an existing one. Each playlist gets a public link at `/p/<uuid>`, which works like a share link: anyone with it can watch and download the videos in it, and nothing else in the library.
 
 Every change to a playlist needs `PLAYLIST_PASSWORD`: creating, renaming, reordering, adding or removing videos, and deleting. On the playlist page, **edit** asks for the passphrase once per tab, then lets you search the library to add videos, reorder and remove them, or rename the playlist. `/playlists` lists all playlists.
 

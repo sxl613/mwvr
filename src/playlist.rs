@@ -1,5 +1,5 @@
 //! Shareable playlists: an ordered list of media files behind a public,
-//! UUID-gated `/playlist/{uuid}` URL. Viewing is open to anyone holding the
+//! UUID-gated `/p/{uuid}` URL. Viewing is open to anyone holding the
 //! link; every mutation (create, rename, reorder, add, remove, delete) needs
 //! the `PLAYLIST_PASSWORD` passphrase in the `X-Playlist-Password` header.
 
@@ -75,7 +75,7 @@ impl Playlist {
 }
 
 pub fn playlist_url(public_base_url: &str, uuid: &str) -> String {
-    format!("{}/playlist/{}", public_base_url.trim_end_matches('/'), uuid)
+    format!("{}/p/{}", public_base_url.trim_end_matches('/'), uuid)
 }
 
 fn now_unix() -> u64 {

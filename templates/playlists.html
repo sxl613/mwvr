@@ -43,7 +43,7 @@
                 name.className = 'share-name';
                 name.textContent = pl.name;
                 name.title = pl.name;
-                name.href = '/playlist/' + pl.uuid;
+                name.href = '/p/' + pl.uuid;
 
                 const url = document.createElement('code');
                 url.className = 'share-url';
@@ -72,7 +72,7 @@
                 remove.addEventListener('click', async () => {
                     if (!window.confirm(`Delete playlist "${pl.name}"? Its link will stop working.`)) return;
                     try {
-                        const res = await window.mwvrPlaylistFetch('/playlist/' + pl.uuid, { method: 'DELETE' });
+                        const res = await window.mwvrPlaylistFetch('/p/' + pl.uuid, { method: 'DELETE' });
                         if (!res) return;
                         if (!res.ok) throw new Error(await res.text());
                         row.remove();

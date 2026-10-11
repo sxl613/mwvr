@@ -124,7 +124,7 @@
     if (!existing && !nameInput.value.trim()) return showError('give the playlist a name');
     try {
       const res = existing
-        ? await window.mwvrPlaylistFetch('/playlist/' + existing, {
+        ? await window.mwvrPlaylistFetch('/p/' + existing, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ add: selection }),

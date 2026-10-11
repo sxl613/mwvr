@@ -92,7 +92,7 @@
 <script>
   (() => {
     const uuid = {{ uuid|json|safe }};
-    const base = '/playlist/' + uuid;
+    const base = '/p/' + uuid;
     let items = JSON.parse(document.getElementById('playlist-data').textContent);
     let currentIdx = 0;
     let editing = false;

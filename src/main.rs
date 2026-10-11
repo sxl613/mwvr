@@ -242,14 +242,14 @@ async fn main() {
         // Shared playlists: viewing is UUID-gated like shares; every
         // mutation additionally checks PLAYLIST_PASSWORD.
         .route(
-            "/playlist/{uuid}",
+            "/p/{uuid}",
             get(playlist_page).put(update_playlist).delete(delete_playlist),
         )
-        .route("/playlist/{uuid}/unlock", post(unlock_playlist))
-        .route("/playlist/{uuid}/library", get(playlist_library))
-        .route("/playlist/{uuid}/stream/{*rel}", get(playlist_stream))
-        .route("/playlist/{uuid}/thumbnail/{*rel}", get(playlist_thumbnail))
-        .route("/playlist/{uuid}/download/{*rel}", get(playlist_download));
+        .route("/p/{uuid}/unlock", post(unlock_playlist))
+        .route("/p/{uuid}/library", get(playlist_library))
+        .route("/p/{uuid}/stream/{*rel}", get(playlist_stream))
+        .route("/p/{uuid}/thumbnail/{*rel}", get(playlist_thumbnail))
+        .route("/p/{uuid}/download/{*rel}", get(playlist_download));
 
     let app = private.merge(public).with_state(state);
 
