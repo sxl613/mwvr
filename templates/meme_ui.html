@@ -1,0 +1,102 @@
+<dialog class="share-dialog meme-dialog" id="meme-dialog">
+  <form method="dialog" class="share-dialog-head">
+    <span>meme</span>
+    <button value="cancel" aria-label="close">&times;</button>
+  </form>
+  <div class="share-body">
+    <label class="share-label share-caption-label">
+      caption
+      <textarea id="meme-caption" rows="4" maxlength="500"
+                placeholder="TOP TEXT" autocapitalize="characters"></textarea>
+    </label>
+    <label class="share-label">
+      expiry
+      <select id="meme-expiry">
+        <option value="">never</option>
+        <option value="3600">1 hour</option>
+        <option value="86400" selected>1 day</option>
+        <option value="604800">7 days</option>
+        <option value="2592000">30 days</option>
+      </select>
+    </label>
+    <button class="watch-link" id="meme-create" type="button">create meme link</button>
+    <div class="share-result" id="meme-result" hidden>
+      <input id="meme-url" type="text" readonly />
+      <button class="watch-link" id="meme-copy" type="button">copy</button>
+    </div>
+    <div class="share-error" id="meme-error" hidden></div>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  const dialog = document.getElementById('meme-dialog');
+  const captionInput = document.getElementById('meme-caption');
+  const expiry = document.getElementById('meme-expiry');
+  const createBtn = document.getElementById('meme-create');
+  const result = document.getElementById('meme-result');
+  const urlInput = document.getElementById('meme-url');
+  const copyBtn = document.getElementById('meme-copy');
+  const errEl = document.getElementById('meme-error');
+  let currentRel = null;
+
+  function openMemeDialog(rel) {
+    if (!rel) return;
+    currentRel = rel;
+    captionInput.value = '';
+    expiry.value = '86400';
+    result.hidden = true;
+    errEl.hidden = true;
+    urlInput.value = '';
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+    captionInput.focus();
+  }
+
+  document.querySelectorAll('[data-meme-rel]').forEach(el => {
+    el.addEventListener('click', () => openMemeDialog(el.dataset.memeRel));
+  });
+
+  // Exposed for the playlist page, which tracks the currently playing item.
+  window.__mwvrMeme = openMemeDialog;
+
+  createBtn.addEventListener('click', async () => {
+    if (!currentRel) return;
+    const caption = captionInput.value.trim();
+    if (!caption) {
+      errEl.textContent = 'caption required';
+      errEl.hidden = false;
+      captionInput.focus();
+      return;
+    }
+    const expiresIn = expiry.value ? parseInt(expiry.value, 10) : null;
+    try {
+      const res = await fetch('/api/shares', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rel: currentRel, caption, expires_in: expiresIn }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      urlInput.value = data.url;
+      result.hidden = false;
+      errEl.hidden = true;
+    } catch (e) {
+      errEl.textContent = 'failed: ' + e.message;
+      errEl.hidden = false;
+    }
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    if (!urlInput.value) return;
+    try {
+      await navigator.clipboard.writeText(urlInput.value);
+      copyBtn.textContent = 'copied';
+      setTimeout(() => { copyBtn.textContent = 'copy'; }, 1500);
+    } catch (e) {
+      urlInput.select();
+      document.execCommand('copy');
+    }
+  });
+})();
+</script>

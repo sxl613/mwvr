@@ -60,6 +60,15 @@ Every change to a playlist needs `PLAYLIST_PASSWORD`: creating, renaming, reorde
 
 Watch progress is kept in the browser's localStorage. Watched videos are marked in the library grid and in both players' sidebars, and partly watched ones show a percentage. Click the mark on a shared playlist page to toggle it.
 
+## Memes
+
+On the library and watch pages, **meme** opens a caption box. The resulting link works
+like a normal share (`/share/<uuid>`, with its own expiry) but renders the caption as a
+white, black-bordered banner in uppercase Impact-style type above the video. Meme links
+appear in `/shares` and can be revoked or regenerated like any other share; regenerating
+keeps the caption. The meme UI is only included on the authenticated library/watch pages,
+not on public share pages.
+
 ## Deployment
 
 `deploy.sh` builds and syncs the stack to a remote host via rsync/ssh and re-creates the containers; see `./deploy.sh --help`.

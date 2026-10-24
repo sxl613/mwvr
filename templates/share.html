@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex, nofollow" />
   <meta name="referrer" content="no-referrer" />
   <meta property="og:title" content="{{ name }}" />
-  <meta property="og:description" content="Shared via mwvr" />
+  <meta property="og:description" content="{% if has_caption %}{{ caption }}{% else %}Shared via mwvr{% endif %}" />
   <meta property="og:type" content="video.other" />
   <meta property="og:url" content="{{ page_url }}" />
   <meta property="og:image" content="{{ thumbnail_url }}" />
@@ -22,12 +22,17 @@
   {% include "theme_head.html" %}
   {{ analytics_tag|safe }}
 </head>
-<body class="page-share">
+<body class="page-share{% if has_caption %} page-share-meme{% endif %}">
   <main>
     <h1>{{ name }}</h1>
-    <video controls playsinline preload="metadata">
-      <source src="/share/{{ uuid }}/stream" type="video/{{ extension }}">
-    </video>
+    <div class="meme-frame">
+      {% if has_caption %}
+      <div class="meme-caption">{{ caption }}</div>
+      {% endif %}
+      <video controls playsinline preload="metadata">
+        <source src="/share/{{ uuid }}/stream" type="video/{{ extension }}">
+      </video>
+    </div>
     <div class="share-actions">
       <div class="download-wrap">
         <a class="download-btn" href="/share/{{ uuid }}/download" download="{{ name }}">download</a>

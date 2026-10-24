@@ -29,6 +29,7 @@ pub struct Share {
     pub expires_at: Option<u64>,
     pub view_count: u64,
     pub max_views: Option<u64>,
+    pub caption: Option<String>,
 }
 
 /// Flat, JSON/template-friendly view of a share including its public URL.
@@ -41,6 +42,7 @@ pub struct ShareView {
     pub expires_at: Option<u64>,
     pub view_count: u64,
     pub max_views: Option<u64>,
+    pub caption: Option<String>,
     pub url: String,
 }
 
@@ -54,6 +56,7 @@ impl Share {
             expires_at: self.expires_at,
             view_count: self.view_count,
             max_views: self.max_views,
+            caption: self.caption.clone(),
             url: share_url(public_base_url, &self.uuid),
         }
     }
@@ -134,7 +137,8 @@ impl ShareStore {
                  created_at  INTEGER NOT NULL,
                  expires_at  INTEGER,
                  view_count  INTEGER NOT NULL DEFAULT 0,
-                 max_views   INTEGER
+                 max_views   INTEGER,
+                 caption     TEXT
              );
              CREATE INDEX IF NOT EXISTS idx_shares_expires_at ON shares(expires_at);",
         )?;
@@ -149,6 +153,9 @@ impl ShareStore {
         }
         if !columns.iter().any(|column| column == "max_views") {
             conn.execute("ALTER TABLE shares ADD COLUMN max_views INTEGER", [])?;
+        }
+        if !columns.iter().any(|column| column == "caption") {
+            conn.execute("ALTER TABLE shares ADD COLUMN caption TEXT", [])?;
         }
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS share_views (
@@ -170,6 +177,7 @@ impl ShareStore {
         name: &str,
         expires_at: Option<u64>,
         max_views: Option<u64>,
+        caption: Option<&str>,
     ) -> Result<Share, rusqlite::Error> {
         let share = Share {
             uuid: Uuid::new_v4().to_string(),
@@ -179,12 +187,13 @@ impl ShareStore {
             expires_at,
             view_count: 0,
             max_views,
+            caption: caption.map(str::to_string),
         };
 
         let conn = self.conn.lock().await;
         conn.execute(
-            "INSERT INTO shares (uuid, name, rel, created_at, expires_at, max_views)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO shares (uuid, name, rel, created_at, expires_at, max_views, caption)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
                 share.uuid,
                 share.name,
@@ -192,6 +201,7 @@ impl ShareStore {
                 share.created_at as i64,
                 share.expires_at.map(|v| v as i64),
                 share.max_views.map(|v| v as i64),
+                share.caption,
             ],
         )?;
         Ok(share)
@@ -200,7 +210,7 @@ impl ShareStore {
     pub async fn get(&self, uuid: &str) -> Result<Option<Share>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT uuid, name, rel, created_at, expires_at, view_count, max_views FROM shares WHERE uuid = ?1",
+            "SELECT uuid, name, rel, created_at, expires_at, view_count, max_views, caption FROM shares WHERE uuid = ?1",
         )?;
         let mut rows = stmt.query_map(rusqlite::params![uuid], |row| {
             Ok(Share {
@@ -211,6 +221,7 @@ impl ShareStore {
                 expires_at: row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
                 view_count: row.get::<_, i64>(5)? as u64,
                 max_views: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
+                caption: row.get(7)?,
             })
         })?;
         rows.next().transpose()
@@ -219,7 +230,7 @@ impl ShareStore {
     pub async fn list(&self) -> Result<Vec<Share>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT uuid, name, rel, created_at, expires_at, view_count, max_views FROM shares ORDER BY created_at DESC",
+            "SELECT uuid, name, rel, created_at, expires_at, view_count, max_views, caption FROM shares ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(Share {
@@ -230,6 +241,7 @@ impl ShareStore {
                 expires_at: row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
                 view_count: row.get::<_, i64>(5)? as u64,
                 max_views: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
+                caption: row.get(7)?,
             })
         })?;
         rows.collect()
@@ -289,7 +301,7 @@ impl ShareStore {
         let mut conn = self.conn.lock().await;
         let tx = conn.transaction()?;
         let previous = tx.query_row(
-            "SELECT uuid, name, rel, expires_at, max_views FROM shares WHERE uuid = ?1",
+            "SELECT uuid, name, rel, expires_at, max_views, caption FROM shares WHERE uuid = ?1",
             rusqlite::params![uuid],
             |row| {
                 Ok((
@@ -298,10 +310,11 @@ impl ShareStore {
                     row.get::<_, String>(2)?,
                     row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
                     row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                    row.get::<_, Option<String>>(5)?,
                 ))
             },
         ).optional()?;
-        let Some((_, name, rel, expires_at, max_views)) = previous else {
+        let Some((_, name, rel, expires_at, max_views, caption)) = previous else {
             tx.commit()?;
             return Ok(None);
         };
@@ -313,10 +326,11 @@ impl ShareStore {
             expires_at,
             view_count: 0,
             max_views,
+            caption,
         };
         tx.execute(
-            "INSERT INTO shares (uuid, name, rel, created_at, expires_at, max_views)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO shares (uuid, name, rel, created_at, expires_at, max_views, caption)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
                 share.uuid,
                 share.name,
@@ -324,6 +338,7 @@ impl ShareStore {
                 share.created_at as i64,
                 share.expires_at.map(|v| v as i64),
                 share.max_views.map(|v| v as i64),
+                share.caption,
             ],
         )?;
         tx.execute("DELETE FROM share_views WHERE share_uuid = ?1", rusqlite::params![uuid])?;
@@ -376,6 +391,9 @@ pub struct CreateShareRequest {
     pub expires_in: Option<u64>,
     pub expires_at: Option<u64>,
     pub max_views: Option<u64>,
+    /// When present, the resulting link shows this as a meme caption above the
+    /// video. Only the private UI exposes this, but it is harmless on any share.
+    pub caption: Option<String>,
 }
 
 pub async fn create_share(
@@ -394,6 +412,18 @@ pub async fn create_share(
     if req.max_views == Some(0) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "max_views must be at least 1".into()));
     }
+
+    let caption = req
+        .caption
+        .as_deref()
+        .map(str::trim)
+        .filter(|caption| !caption.is_empty());
+    if caption.is_some_and(|caption| caption.chars().count() > 500) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "caption must be at most 500 characters".into(),
+        ));
+    }
     let expires_at = if let Some(timestamp) = req.expires_at {
         if timestamp <= now_unix() {
             return Err(ApiError(StatusCode::BAD_REQUEST, "expiry must be in the future".into()));
@@ -407,7 +437,7 @@ pub async fn create_share(
 
     let share = state
         .share_store
-        .create(&req.rel, &name, expires_at, req.max_views)
+        .create(&req.rel, &name, expires_at, req.max_views, caption)
         .await
         .map_err(ApiError::internal)?;
 
@@ -581,6 +611,7 @@ pub async fn share_page(
     let page_url = share_url(&state.public_base_url, &share.uuid);
     let thumbnail_url = format!("{}/thumbnail", page_url);
 
+    let caption = share.caption.clone().unwrap_or_default();
     let html = ShareTemplate {
         uuid: share.uuid,
         name: share.name,
@@ -589,6 +620,8 @@ pub async fn share_page(
         page_url,
         thumbnail_url,
         mime: format!("video/{}", extension),
+        has_caption: !caption.is_empty(),
+        caption,
         analytics_tag: state.analytics_tag.clone(),
     }
     .render()

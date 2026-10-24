@@ -296,6 +296,7 @@ body.page-index { padding: 2rem; }
 .page-index .media-info { padding: 0.75rem; }
 .page-index .media-info .watch-link,
 .page-index .media-info .share-btn { margin-top: 0.55rem; }
+.page-index .media-info .meme-btn { margin-left: 0.35rem; }
 .page-index .watched-badge {
   margin-left: 0.45rem;
   color: var(--color-muted);
@@ -447,6 +448,26 @@ body.page-share {
   border: 1px solid var(--border);
   display: block;
 }
+.page-share .meme-caption {
+  box-sizing: border-box;
+  width: 100%;
+  padding: clamp(0.6rem, 2.5vw, 1.4rem) clamp(0.8rem, 4vw, 2.5rem);
+  background: #fff;
+  color: #000;
+  border: 3px solid #000;
+  border-bottom: none;
+  font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  font-size: clamp(1.4rem, 5vw, 3.5rem);
+  font-weight: 900;
+  font-stretch: condensed;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.page-share-meme video { max-height: calc(100dvh - 15rem); }
 .page-share .share-actions {
   display: flex;
   justify-content: flex-end;
@@ -487,6 +508,7 @@ body.page-playlist { height: 100dvh; overflow: hidden; }
   justify-content: space-between;
   gap: 0.5rem;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 .page-playlist .sidebar-header .back-link {
   color: var(--color-muted);
@@ -717,6 +739,26 @@ button.back-link {
   margin-left: auto;
 }
 .share-label input:not([type="checkbox"]) { width: 11rem; }
+.share-caption-label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+.share-caption-label textarea {
+  min-height: 5rem;
+  padding: 0.5rem;
+  background: transparent;
+  border: 1px solid var(--border-input, #333);
+  color: var(--color, #aaa);
+  font-family: inherit;
+  font-size: 0.8rem;
+  resize: vertical;
+  text-transform: uppercase;
+}
+.share-caption-label textarea:focus {
+  outline: none;
+  border-color: var(--border-hover, #555);
+}
 .share-one-time input { accent-color: var(--accent); }
 .share-body .watch-link {
   margin-top: 0;

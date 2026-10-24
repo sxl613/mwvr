@@ -33,6 +33,8 @@ pub struct ShareTemplate {
     pub page_url: String,
     pub thumbnail_url: String,
     pub mime: String,
+    pub has_caption: bool,
+    pub caption: String,
     pub analytics_tag: String,
 }
 

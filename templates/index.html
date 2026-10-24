@@ -127,6 +127,7 @@
                             <div class="watch-progress-fill" data-progress-fill></div>
                         </div>
                         <button class="watch-link share-btn" type="button" data-share-rel="{{ file.rel }}">share</button>
+                        <button class="watch-link share-btn meme-btn" type="button" data-meme-rel="{{ file.rel }}">meme</button>
                         <label class="select-toggle">
                             <input type="checkbox" data-select-rel="{{ file.rel }}"> select
                         </label>
@@ -241,6 +242,7 @@
     </script>
     {% include "theme.js" %}
     {% include "share_ui.html" %}
+    {% include "meme_ui.html" %}
     {% include "playlist_auth.html" %}
     {% include "playlist_picker.html" %}
 </body>

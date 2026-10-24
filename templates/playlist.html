@@ -17,6 +17,7 @@
       <a class="back-link" href="/">&larr; list</a>
       <span class="count" id="sidebar-count"></span>
       <button class="back-link share-btn share-current-btn" type="button" data-share-rel="">share</button>
+      <button class="back-link share-btn meme-current-btn" type="button" data-meme-rel="">meme</button>
       <label class="autoplay-label">
         <input type="checkbox" id="autoplay-toggle">
         autoplay
@@ -57,6 +58,7 @@
     <a class="back-link" href="/">&larr; list</a>
     <span class="count" id="overlay-count"></span>
     <button class="back-link share-btn share-current-btn" type="button" data-share-rel="">share</button>
+    <button class="back-link share-btn meme-current-btn" type="button" data-meme-rel="">meme</button>
     <label class="autoplay-label">
       <input type="checkbox" id="autoplay-toggle-mobile">
       autoplay
@@ -218,6 +220,9 @@
       // Keep the share buttons pointed at the current video.
       document.querySelectorAll('.share-current-btn').forEach(b => {
         b.dataset.shareRel = item.r;
+      });
+      document.querySelectorAll('.meme-current-btn').forEach(b => {
+        b.dataset.memeRel = item.r;
       });
 
       // Update <source>
@@ -430,5 +435,6 @@
 
 {% include "theme.js" %}
 {% include "share_ui.html" %}
+{% include "meme_ui.html" %}
 </body>
 </html>

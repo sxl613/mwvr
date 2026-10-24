@@ -43,7 +43,7 @@
                 const name = document.createElement('span');
                 name.className = 'share-name';
                 name.textContent = s.name;
-                name.title = s.name;
+                name.title = s.caption ? `${s.name} — meme: ${s.caption}` : s.name;
 
                 const url = document.createElement('code');
                 url.className = 'share-url';
@@ -55,7 +55,7 @@
                 const updateMeta = () => {
                     const viewLimit = s.max_views == null ? `${s.view_count} views` : `${s.view_count} / ${s.max_views} views`;
                     const expiry = s.expires_at ? 'expires ' + fmt(s.expires_at) : 'never expires';
-                    meta.textContent = `${viewLimit} · ${expiry}`;
+                    meta.textContent = `${s.caption ? 'meme · ' : ''}${viewLimit} · ${expiry}`;
                 };
                 updateMeta();
 
